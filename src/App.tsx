@@ -10,7 +10,7 @@ import { LoginView } from './components/LoginView';
 import { UserManagementModal } from './components/UserManagementModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { LogoutConfirmModal } from './components/LogoutConfirmModal';
-import { safeStorage } from './utils/storage';
+import { safeStorage, safeSessionStorage } from './utils/storage';
 import { 
   INITIAL_ROUTES, 
   INITIAL_POINTS, 
@@ -43,27 +43,47 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  // Enterprise User Accounts State with localStorage persistence
+  // Enterprise User Accounts State with canonical database synchronization across all devices
   const [users, setUsers] = useState<UserAccount[]>(() => {
-    const saved = safeStorage.getItem('georoute_users');
-    if (saved) {
-      try {
+    try {
+      const saved = safeStorage.getItem('georoute_users');
+      if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const loaded = parsed.map((u: UserAccount) => {
-            let updated = { ...u };
-            if (updated.name === 'Kỹ sư Tuấn Lê') updated.name = 'Tuấn Lê Software';
-            if (updated.username === 'tuanle' || updated.phone === '0903 888 999') updated.phone = '0913.566.532';
-            if (!updated.password) updated.password = '123';
-            return updated;
+          // Khởi tạo map từ INITIAL_USERS chuẩn làm cơ sở dữ liệu gốc
+          const userMap = new Map<string, UserAccount>();
+          INITIAL_USERS.forEach((u) => {
+            userMap.set(u.username.toLowerCase(), { ...u });
           });
-          const existingUsernames = new Set(loaded.map(u => (u.username || '').toLowerCase()));
-          const missing = INITIAL_USERS.filter(u => !existingUsernames.has(u.username.toLowerCase()));
-          return [...loaded, ...missing];
+
+          // Hòa trộn và đồng bộ dữ liệu người dùng lưu trên thiết bị
+          parsed.forEach((storedUser: UserAccount) => {
+            if (!storedUser || !storedUser.username) return;
+            const uname = storedUser.username.toLowerCase();
+            const initial = userMap.get(uname);
+            if (initial) {
+              // Cập nhật người dùng chuẩn nhưng đảm bảo password và status active đồng bộ đồng nhất
+              userMap.set(uname, {
+                ...initial,
+                ...storedUser,
+                password: storedUser.password?.trim() || initial.password || '123',
+                status: storedUser.status || 'active',
+                phone: initial.phone || storedUser.phone
+              });
+            } else {
+              // Người dùng được thêm mới bởi quản trị viên
+              userMap.set(uname, {
+                ...storedUser,
+                password: storedUser.password?.trim() || '123',
+                status: storedUser.status || 'active'
+              });
+            }
+          });
+          return Array.from(userMap.values());
         }
-      } catch (e) {
-        console.error(e);
       }
+    } catch (e) {
+      console.error('Failed to parse georoute_users:', e);
     }
     return INITIAL_USERS;
   });
@@ -71,12 +91,8 @@ export default function App() {
   // Authentication State
   const [currentUser, setCurrentUser] = useState<UserAccount>(() => {
     let savedUser = safeStorage.getItem('georoute_current_user');
-    if (!savedUser && typeof sessionStorage !== 'undefined') {
-      try {
-        savedUser = sessionStorage.getItem('georoute_session_user');
-      } catch (e) {
-        console.error(e);
-      }
+    if (!savedUser) {
+      savedUser = safeSessionStorage.getItem('georoute_session_user');
     }
     if (savedUser) {
       try {
@@ -103,14 +119,8 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     const savedAuth = safeStorage.getItem('georoute_is_authenticated');
     if (savedAuth === 'true') return true;
-    if (typeof sessionStorage !== 'undefined') {
-      try {
-        return sessionStorage.getItem('georoute_session_auth') === 'true';
-      } catch {
-        return false;
-      }
-    }
-    return false;
+    const sessionAuth = safeSessionStorage.getItem('georoute_session_auth');
+    return sessionAuth === 'true';
   });
 
   // Load and synchronize initial routes ensuring default startup route is strictly respected
@@ -278,26 +288,14 @@ export default function App() {
     if (rememberMe) {
       safeStorage.setItem('georoute_is_authenticated', 'true');
       safeStorage.setItem('georoute_current_user', JSON.stringify(updatedUser));
-      if (typeof sessionStorage !== 'undefined') {
-        try {
-          sessionStorage.removeItem('georoute_session_auth');
-          sessionStorage.removeItem('georoute_session_user');
-        } catch (e) {
-          console.error(e);
-        }
-      }
+      safeSessionStorage.removeItem('georoute_session_auth');
+      safeSessionStorage.removeItem('georoute_session_user');
     } else {
       // Unchecked: chỉ lưu phiên trong session hiện tại, không lưu vĩnh viễn trên trình duyệt
       safeStorage.removeItem('georoute_is_authenticated');
       safeStorage.removeItem('georoute_current_user');
-      if (typeof sessionStorage !== 'undefined') {
-        try {
-          sessionStorage.setItem('georoute_session_auth', 'true');
-          sessionStorage.setItem('georoute_session_user', JSON.stringify(updatedUser));
-        } catch (e) {
-          console.error(e);
-        }
-      }
+      safeSessionStorage.setItem('georoute_session_auth', 'true');
+      safeSessionStorage.setItem('georoute_session_user', JSON.stringify(updatedUser));
     }
 
     const perms = getUserEffectivePermissions(updatedUser, rolePermissions);
@@ -309,14 +307,8 @@ export default function App() {
     setIsAuthenticated(false);
     safeStorage.removeItem('georoute_is_authenticated');
     safeStorage.removeItem('georoute_current_user');
-    if (typeof sessionStorage !== 'undefined') {
-      try {
-        sessionStorage.removeItem('georoute_session_auth');
-        sessionStorage.removeItem('georoute_session_user');
-      } catch (e) {
-        console.error(e);
-      }
-    }
+    safeSessionStorage.removeItem('georoute_session_auth');
+    safeSessionStorage.removeItem('georoute_session_user');
     showToast('Đã đăng xuất an toàn khỏi hệ thống!', 'info');
   };
 

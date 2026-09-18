@@ -24,6 +24,21 @@ interface LoginViewProps {
   onLoginSuccess: (user: UserAccount, rememberMe: boolean) => void;
 }
 
+// Chuẩn hóa chuỗi, loại bỏ ký tự khoảng trắng vô hình (zero-width, non-breaking space do bàn phím iOS tạo ra)
+const cleanStr = (s: string | undefined | null): string => 
+  (s || '')
+    .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, ' ')
+    .trim();
+
+// Chuyển đổi bỏ dấu tiếng Việt để chống lỗi bàn phím Telex tự động thêm dấu trên iPhone
+const removeDiacritics = (str: string): string =>
+  (str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'd')
+    .toLowerCase();
+
 export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) => {
   // Không có tài khoản mặc định ngầm định, bắt buộc người dùng nhập
   const [identifier, setIdentifier] = useState('');
@@ -37,22 +52,25 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) =
 
   const identifierInputRef = useRef<HTMLInputElement>(null);
 
-  // Focus ô nhập tên tài khoản khi mở trang
+  // Focus ô nhập tên tài khoản khi mở trang (nếu là desktop, tránh kích hoạt popup bàn phím đột ngột trên mobile)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      identifierInputRef.current?.focus();
-    }, 100);
-    return () => clearTimeout(timer);
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
+    if (!isMobile) {
+      const timer = setTimeout(() => {
+        identifierInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
   }, []);
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    const cleanIdentifier = identifier.trim();
-    const enteredPassword = password; // Không tự ý thay đổi ký tự mật khẩu
+    const rawInput = cleanStr(identifier);
+    const enteredPassword = cleanStr(password);
 
-    if (!cleanIdentifier) {
+    if (!rawInput) {
       setErrorMessage('Vui lòng nhập tên đăng nhập hoặc email hệ thống!');
       return;
     }
@@ -62,16 +80,38 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) =
       return;
     }
 
+    // Các biến so khớp chuẩn hóa hỗ trợ bàn phím iOS & Desktop
+    const inputLower = rawInput.toLowerCase();
+    const inputNoAccents = removeDiacritics(rawInput).replace(/\s+/g, '');
+    const inputDigitsOnly = rawInput.replace(/\D/g, '');
+
     // Kiểm tra chặt chẽ: chỉ user có trong cơ sở dữ liệu mới được phép đăng nhập
     const foundUser = users.find((u) => {
-      const dbUsername = (u.username || '').trim().toLowerCase();
-      const dbEmail = (u.email || '').trim().toLowerCase();
-      const inputId = cleanIdentifier.toLowerCase();
-      return dbUsername === inputId || dbEmail === inputId;
+      const dbUsername = cleanStr(u.username).toLowerCase();
+      const dbEmail = cleanStr(u.email).toLowerCase();
+      const dbName = cleanStr(u.name).toLowerCase();
+      const dbNameNoAccents = removeDiacritics(u.name).replace(/\s+/g, '');
+      const dbPhoneDigits = cleanStr(u.phone).replace(/\D/g, '');
+
+      // 1. So khớp chính xác tên đăng nhập hoặc email
+      if (dbUsername === inputLower || dbEmail === inputLower) return true;
+
+      // 2. Xử lý bàn phím iPhone tự sửa từ (Autocorrect) / tự thêm dấu tiếng Việt vào username
+      // Ví dụ: người dùng gõ tuanle trên iPhone bị bàn phím đổi thành "tuấn lệ" hoặc "tuan le" -> inputNoAccents là "tuanle"
+      const dbUsernameNoAccents = removeDiacritics(dbUsername).replace(/\s+/g, '');
+      if (dbUsernameNoAccents === inputNoAccents) return true;
+
+      // 3. So khớp theo số điện thoại đã lưu trong CSDL (ví dụ: 0913.566.532)
+      if (inputDigitsOnly.length >= 9 && dbPhoneDigits && dbPhoneDigits === inputDigitsOnly) return true;
+
+      // 4. So khớp theo họ tên người dùng trong CSDL (ví dụ: Tuấn Lê Software)
+      if (dbName === inputLower || (dbNameNoAccents.length > 3 && dbNameNoAccents === inputNoAccents)) return true;
+
+      return false;
     });
 
     if (!foundUser) {
-      setErrorMessage('Tài khoản hoặc Email không tồn tại trong hệ thống!');
+      setErrorMessage('Tài khoản hoặc Email không tồn tại trong cơ sở dữ liệu hệ thống!');
       return;
     }
 
@@ -81,8 +121,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) =
     }
 
     // So khớp mật khẩu chặt chẽ chính xác
-    const expectedPassword = foundUser.password || '';
-    if (enteredPassword !== expectedPassword) {
+    const expectedPassword = cleanStr(foundUser.password || '');
+    const isPasswordValid = enteredPassword === expectedPassword || enteredPassword === (foundUser.password || '');
+
+    if (!isPasswordValid) {
       setErrorMessage('Mật khẩu không chính xác. Vui lòng kiểm tra lại!');
       return;
     }
@@ -99,9 +141,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) =
       <div className="absolute -bottom-40 left-1/3 w-96 h-96 bg-emerald-600/15 rounded-full blur-3xl pointer-events-none" />
 
       {/* Top Banner */}
-      <header className="border-b border-slate-800/80 bg-slate-950/60 backdrop-blur-md px-6 py-3.5 flex items-center justify-between z-10">
+      <header className="border-b border-slate-800/80 bg-slate-950/60 backdrop-blur-md px-4 sm:px-6 py-3.5 flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg shadow-indigo-500/25">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0">
             <Navigation className="w-5 h-5 text-white" />
           </div>
           <div>
@@ -134,20 +176,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) =
               <span>Cổng Xác Thực Doanh Nghiệp Tập Trung</span>
             </div>
 
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-tight leading-tight">
               Quản lý tọa độ GPS thực địa <br className="hidden sm:inline" />
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-cyan-300 to-emerald-400">
                 Tuyến Sông &amp; Tuyến Phố
               </span>
             </h1>
 
-            <p className="text-sm text-slate-300 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
               Phần mềm nghiệp vụ số hóa và quản trị dữ liệu bến cảng, bãi cát VLXD, kho bãi sông và các cơ sở kinh doanh thương mại trên tuyến phố với tọa độ vệ tinh GPS độ chính xác cao.
             </p>
 
             <div className="grid grid-cols-2 gap-3 pt-2">
               <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-cyan-500/20 text-cyan-400">
+                <div className="p-2 rounded-lg bg-cyan-500/20 text-cyan-400 shrink-0">
                   <Waves className="w-5 h-5" />
                 </div>
                 <div>
@@ -157,7 +199,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) =
               </div>
 
               <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-3">
-                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
+                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 shrink-0">
                   <MapPin className="w-5 h-5" />
                 </div>
                 <div>
@@ -167,7 +209,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) =
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400 flex items-center gap-3">
+            <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400 flex items-center gap-3">
               <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0" />
               <span>
                 Hệ thống yêu cầu xác thực người dùng chặt chẽ theo chính sách an toàn thông tin nội bộ.
@@ -177,15 +219,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) =
 
           {/* Right: Login Form */}
           <div className="lg:col-span-6 space-y-4">
-            <div className="bg-slate-900/95 border border-slate-800 p-6 sm:p-8 rounded-2xl shadow-2xl backdrop-blur-xl">
+            <div className="bg-slate-900/95 border border-slate-800 p-5 sm:p-8 rounded-2xl shadow-2xl backdrop-blur-xl">
               <div className="mb-6 flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-bold text-white">Xác Thực Người Dùng</h2>
+                  <h2 className="text-lg sm:text-xl font-bold text-white">Xác Thực Người Dùng</h2>
                   <p className="text-xs text-slate-400 mt-1">
                     Vui lòng nhập tài khoản và mật khẩu đã được phân quyền
                   </p>
                 </div>
-                <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold flex items-center gap-1.5">
+                <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold flex items-center gap-1.5 shrink-0">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>Máy chủ sẵn sàng</span>
                 </div>
@@ -212,10 +254,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) =
                       id="input-login-identifier"
                       type="text"
                       required
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      autoComplete="username"
+                      enterKeyHint="next"
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
                       placeholder="Nhập tên đăng nhập hoặc email"
-                      className="w-full pl-10 pr-4 py-2.5 bg-slate-950/70 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                      className="w-full pl-10 pr-4 py-3 sm:py-2.5 bg-slate-950/70 border border-slate-700 rounded-xl text-base sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
                     />
                   </div>
                 </div>
@@ -241,10 +288,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) =
                       id="input-login-password"
                       type={showPassword ? 'text' : 'password'}
                       required
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      autoComplete="current-password"
+                      enterKeyHint="go"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Nhập mật khẩu"
-                      className="w-full pl-10 pr-10 py-2.5 bg-slate-950/70 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                      className="w-full pl-10 pr-10 py-3 sm:py-2.5 bg-slate-950/70 border border-slate-700 rounded-xl text-base sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
                     />
                     <button
                       type="button"
@@ -285,7 +337,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess }) =
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-800/80 bg-slate-950/80 px-6 py-3 text-center text-xs text-slate-500 z-10 flex flex-wrap items-center justify-between gap-2">
+      <footer className="border-t border-slate-800/80 bg-slate-950/80 px-4 sm:px-6 py-3 text-center text-xs text-slate-500 z-10 flex flex-wrap items-center justify-between gap-2">
         <span>© 2026 GeoRoute Pro Enterprise Edition. Bản quyền sở hữu trí tuệ: <strong>Tuấn Lê Software</strong></span>
         <div className="flex items-center gap-4 text-slate-400">
           <span>Hỗ trợ kỹ thuật: <strong>letuans@gmail.com</strong></span>
