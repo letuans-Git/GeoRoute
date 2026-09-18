@@ -1,0 +1,181 @@
+@import "tailwindcss";
+
+@theme {
+  --breakpoint-xs: 480px;
+}
+
+/* Custom persistent horizontal scrollbar for mobile, tablet and narrow screens */
+.always-scrollbar {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #6366f1 #e2e8f0;
+}
+
+.always-scrollbar::-webkit-scrollbar {
+  height: 5px;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block !important;
+}
+
+.always-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+  margin: 0 4px;
+}
+
+.always-scrollbar::-webkit-scrollbar-thumb {
+  background: #818cf8;
+  border-radius: 9999px;
+  border: 1px solid #6366f1;
+}
+
+.always-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #4f46e5;
+}
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #1e293b;
+    background-color: #f8fafc;
+    overflow-x: hidden;
+  }
+}
+
+/* Leaflet Customization */
+.leaflet-popup-content-wrapper {
+  padding: 0;
+  border-radius: 14px;
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  overflow: hidden;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  line-height: 1.5;
+}
+
+.leaflet-popup-tip-container {
+  overflow: hidden;
+}
+
+.custom-marker-icon {
+  background: transparent;
+  border: none;
+  overflow: visible !important;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  70% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+.gps-pulse {
+  animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+@keyframes sonar-wave-radiate {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+.sonar-wave-1 {
+  animation: sonar-wave-radiate 2.2s cubic-bezier(0.1, 0.5, 0.4, 1) infinite;
+}
+
+.sonar-wave-2 {
+  animation: sonar-wave-radiate 2.2s cubic-bezier(0.1, 0.5, 0.4, 1) infinite 0.7s;
+}
+
+.sonar-wave-3 {
+  animation: sonar-wave-radiate 2.2s cubic-bezier(0.1, 0.5, 0.4, 1) infinite 1.4s;
+}
+
+.point-studio-active-pin {
+  cursor: grab !important;
+  user-select: none !important;
+  touch-action: none !important;
+}
+
+.point-studio-active-pin:active,
+.point-studio-active-pin.leaflet-drag-target {
+  cursor: grabbing !important;
+}
+
+@keyframes yellow-halo-radiate {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.95;
+    box-shadow: 0 0 14px 4px rgba(250, 204, 21, 0.95), inset 0 0 8px rgba(250, 204, 21, 0.6);
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.7;
+    box-shadow: 0 0 24px 8px rgba(250, 204, 21, 0.8), 0 0 40px 14px rgba(234, 179, 8, 0.5);
+  }
+  100% {
+    transform: scale(2.0);
+    opacity: 0;
+    box-shadow: 0 0 35px 12px rgba(250, 204, 21, 0);
+  }
+}
+
+.yellow-halo-pulse {
+  animation: yellow-halo-radiate 1.8s cubic-bezier(0.15, 0.6, 0.35, 1) infinite;
+}
+
+.point-studio-white-dot {
+  width: 19px !important;
+  height: 19px !important;
+  min-width: 19px !important;
+  min-height: 19px !important;
+  aspect-ratio: 1 / 1 !important;
+  border-radius: 9999px !important;
+  background-color: #ffffff !important;
+  border: 2.5px solid #22c55e !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55) !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.point-studio-red-dot {
+  width: 19px !important;
+  height: 19px !important;
+  min-width: 19px !important;
+  min-height: 19px !important;
+  aspect-ratio: 1 / 1 !important;
+  border-radius: 9999px !important;
+  background-color: #ef4444 !important;
+  border: 2.5px solid #ffffff !important;
+  box-shadow: 0 0 0 2px #facc15, 0 3px 10px rgba(0, 0, 0, 0.55), 0 0 14px rgba(250, 204, 21, 0.85) !important;
+  box-sizing: border-box !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}

@@ -1,0 +1,6 @@
+{
+  "name": "GeoRoute Pro - Quản Lý Tuyến & Điểm Vị Trí GPS",
+  "description": "Hệ thống quản lý chuyên nghiệp các địa điểm trên tuyến đường bộ và tuyến sông dựa trên bản đồ vệ tinh/Google Maps và tọa độ GPS thực tế. Bản quyền sở hữu trí tuệ: Tuấn Lê Software.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
