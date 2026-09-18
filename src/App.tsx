@@ -70,7 +70,14 @@ export default function App() {
 
   // Authentication State
   const [currentUser, setCurrentUser] = useState<UserAccount>(() => {
-    const savedUser = safeStorage.getItem('georoute_current_user');
+    let savedUser = safeStorage.getItem('georoute_current_user');
+    if (!savedUser && typeof sessionStorage !== 'undefined') {
+      try {
+        savedUser = sessionStorage.getItem('georoute_session_user');
+      } catch (e) {
+        console.error(e);
+      }
+    }
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser);
@@ -95,7 +102,15 @@ export default function App() {
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     const savedAuth = safeStorage.getItem('georoute_is_authenticated');
-    return savedAuth === 'true';
+    if (savedAuth === 'true') return true;
+    if (typeof sessionStorage !== 'undefined') {
+      try {
+        return sessionStorage.getItem('georoute_session_auth') === 'true';
+      } catch {
+        return false;
+      }
+    }
+    return false;
   });
 
   // Load and synchronize initial routes ensuring default startup route is strictly respected
@@ -243,10 +258,9 @@ export default function App() {
   }, [currentUser, rolePermissions]);
 
   // Login handler
-  const handleLoginSuccess = (user: UserAccount, rememberMe: boolean = true) => {
+  const handleLoginSuccess = (user: UserAccount, rememberMe: boolean = false) => {
     const updatedUser: UserAccount = {
       ...user,
-      password: user.password || '123',
       lastLogin: new Date().toISOString()
     };
     setCurrentUser(updatedUser);
@@ -261,9 +275,30 @@ export default function App() {
       return [updatedUser, ...prev];
     });
 
-    // Always persist authentication to protect against unexpected reloads on Vercel
-    safeStorage.setItem('georoute_is_authenticated', 'true');
-    safeStorage.setItem('georoute_current_user', JSON.stringify(updatedUser));
+    if (rememberMe) {
+      safeStorage.setItem('georoute_is_authenticated', 'true');
+      safeStorage.setItem('georoute_current_user', JSON.stringify(updatedUser));
+      if (typeof sessionStorage !== 'undefined') {
+        try {
+          sessionStorage.removeItem('georoute_session_auth');
+          sessionStorage.removeItem('georoute_session_user');
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    } else {
+      // Unchecked: chỉ lưu phiên trong session hiện tại, không lưu vĩnh viễn trên trình duyệt
+      safeStorage.removeItem('georoute_is_authenticated');
+      safeStorage.removeItem('georoute_current_user');
+      if (typeof sessionStorage !== 'undefined') {
+        try {
+          sessionStorage.setItem('georoute_session_auth', 'true');
+          sessionStorage.setItem('georoute_session_user', JSON.stringify(updatedUser));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
 
     const perms = getUserEffectivePermissions(updatedUser, rolePermissions);
     showToast(`Đăng nhập thành công! Chào mừng ${user.name} (${perms.roleName}${perms.isCustom ? ' - Quyền tùy biến' : ''})`, 'success');
@@ -274,6 +309,14 @@ export default function App() {
     setIsAuthenticated(false);
     safeStorage.removeItem('georoute_is_authenticated');
     safeStorage.removeItem('georoute_current_user');
+    if (typeof sessionStorage !== 'undefined') {
+      try {
+        sessionStorage.removeItem('georoute_session_auth');
+        sessionStorage.removeItem('georoute_session_user');
+      } catch (e) {
+        console.error(e);
+      }
+    }
     showToast('Đã đăng xuất an toàn khỏi hệ thống!', 'info');
   };
 
