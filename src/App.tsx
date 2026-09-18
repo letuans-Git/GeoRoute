@@ -41,6 +41,18 @@ import {
   Navigation,
   ExternalLink
 } from 'lucide-react';
+import {
+  seedFirestoreIfEmpty,
+  subscribeCloudUsers,
+  subscribeCloudRoutes,
+  subscribeCloudPoints,
+  saveCloudUser,
+  deleteCloudUser,
+  saveCloudRoute,
+  deleteCloudRoute,
+  saveCloudPoint,
+  deleteCloudPoint,
+} from './services/cloudDb';
 
 export default function App() {
   // Enterprise User Accounts State with canonical database synchronization across all devices
@@ -222,6 +234,8 @@ export default function App() {
 
   // Toast Notification state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+  const [isCloudConnected, setIsCloudConnected] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToast({ message, type });
@@ -230,7 +244,65 @@ export default function App() {
     }, 4000);
   };
 
-  // Persist users, routes & points
+  // Real-time Cloud Synchronization (Firestore)
+  // Seeds default data if cloud database is empty, then listens for real-time changes
+  useEffect(() => {
+    let mounted = true;
+    setIsSyncing(true);
+
+    seedFirestoreIfEmpty().then(() => {
+      if (!mounted) return;
+      setIsSyncing(false);
+    });
+
+    const unsubUsers = subscribeCloudUsers(
+      (cloudUsers) => {
+        if (cloudUsers && cloudUsers.length > 0) {
+          setUsers(cloudUsers);
+          setIsCloudConnected(true);
+        }
+      },
+      (err) => {
+        console.warn('Users cloud sync error:', err);
+        setIsCloudConnected(false);
+      }
+    );
+
+    const unsubRoutes = subscribeCloudRoutes(
+      (cloudRoutes) => {
+        if (cloudRoutes && cloudRoutes.length > 0) {
+          setRoutes(cloudRoutes);
+          setIsCloudConnected(true);
+        }
+      },
+      (err) => {
+        console.warn('Routes cloud sync error:', err);
+        setIsCloudConnected(false);
+      }
+    );
+
+    const unsubPoints = subscribeCloudPoints(
+      (cloudPoints) => {
+        if (cloudPoints) {
+          setPoints(cloudPoints);
+          setIsCloudConnected(true);
+        }
+      },
+      (err) => {
+        console.warn('Points cloud sync error:', err);
+        setIsCloudConnected(false);
+      }
+    );
+
+    return () => {
+      mounted = false;
+      unsubUsers();
+      unsubRoutes();
+      unsubPoints();
+    };
+  }, []);
+
+  // Persist users, routes & points locally for offline speed
   useEffect(() => {
     safeStorage.setItem('georoute_users', JSON.stringify(users));
   }, [users]);
@@ -338,10 +410,12 @@ export default function App() {
       createdAt: new Date().toISOString(),
     };
     setUsers(prev => [newUser, ...prev]);
+    saveCloudUser(newUser);
   };
 
   const handleUpdateUser = (updatedUser: UserAccount) => {
     setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+    saveCloudUser(updatedUser);
     if (currentUser.id === updatedUser.id) {
       setCurrentUser(updatedUser);
       safeStorage.setItem('georoute_current_user', JSON.stringify(updatedUser));
@@ -350,10 +424,12 @@ export default function App() {
 
   const handleDeleteUser = (userId: string) => {
     setUsers(prev => prev.filter(u => u.id !== userId));
+    deleteCloudUser(userId);
   };
 
   const handleBatchUpdateUsers = (updatedUsers: UserAccount[]) => {
     setUsers(updatedUsers);
+    updatedUsers.forEach(u => saveCloudUser(u));
     const updatedCurrent = updatedUsers.find(u => u.id === currentUser.id);
     if (updatedCurrent) {
       setCurrentUser(updatedCurrent);
@@ -363,6 +439,7 @@ export default function App() {
 
   const handleImportUsers = (newUsers: UserAccount[]) => {
     setUsers(newUsers);
+    newUsers.forEach(u => saveCloudUser(u));
     showToast(`Đã nhập thành công ${newUsers.length} tài khoản người dùng!`, 'success');
   };
 
@@ -440,6 +517,7 @@ export default function App() {
     }
     const pointToDelete = points.find(p => p.id === pointId);
     setPoints(prev => prev.filter(p => p.id !== pointId));
+    deleteCloudPoint(pointId);
     if (selectedPointId === pointId) setSelectedPointId(null);
     showToast(`Đã xóa thành công địa điểm "${pointToDelete?.name || ''}"`, 'success');
   };
@@ -447,16 +525,14 @@ export default function App() {
   const handleSavePoint = (savedData: Partial<LocationPoint>) => {
     if (savedData.id) {
       // Update existing
-      setPoints(prev => prev.map(p => {
-        if (p.id === savedData.id) {
-          return {
-            ...p,
-            ...savedData,
-            updatedAt: new Date().toISOString(),
-          } as LocationPoint;
-        }
-        return p;
-      }));
+      const updatedPt = {
+        ...(points.find(p => p.id === savedData.id) || {}),
+        ...savedData,
+        updatedAt: new Date().toISOString(),
+      } as LocationPoint;
+
+      setPoints(prev => prev.map(p => (p.id === savedData.id ? updatedPt : p)));
+      saveCloudPoint(updatedPt);
       showToast(`Đã cập nhật thành công thông tin "${savedData.name}"`, 'success');
     } else {
       // Create new
@@ -477,6 +553,7 @@ export default function App() {
         updatedAt: new Date().toISOString(),
       };
       setPoints(prev => [newPoint, ...prev]);
+      saveCloudPoint(newPoint);
       setSelectedPointId(newPoint.id);
       showToast(`Đã lưu thành công địa điểm "${newPoint.name}" vào tuyến!`, 'success');
     }
@@ -536,12 +613,14 @@ export default function App() {
         if (routeToSave.isDefault) return { ...r, isDefault: false };
         return r;
       }));
+      saveCloudRoute(routeToSave);
       showToast(`Đã cập nhật và hiển thị ngay bản đồ tuyến "${routeToSave.name}"!`, 'success');
     } else {
       setRoutes(prev => [
         routeToSave,
         ...(routeToSave.isDefault ? prev.map(r => ({ ...r, isDefault: false })) : prev)
       ]);
+      saveCloudRoute(routeToSave);
       showToast(`Đã tạo mới và hiển thị ngay bản đồ tuyến "${routeToSave.name}"!`, 'success');
     }
 
@@ -577,6 +656,9 @@ export default function App() {
     }
     setRoutes(prev => prev.map(r => r.id === routeId ? { ...r, status: newStatus, updatedAt: new Date().toISOString() } : r));
     const target = routes.find(r => r.id === routeId);
+    if (target) {
+      saveCloudRoute({ ...target, status: newStatus, updatedAt: new Date().toISOString() });
+    }
     const statusName = newStatus === 'active' ? 'khôi phục' : 'vô hiệu hóa';
     showToast(`Đã ${statusName} tuyến "${target?.name || routeId}".`, 'info');
 
@@ -600,6 +682,7 @@ export default function App() {
     }
     setRoutes(prev => prev.filter(r => r.id !== routeId));
     setPoints(prev => prev.filter(p => p.routeId !== routeId));
+    deleteCloudRoute(routeId);
     if (currentRouteId === routeId) {
       const remaining = routes.filter(r => r.id !== routeId && r.status !== 'inactive');
       if (remaining.length > 0) {
@@ -692,6 +775,8 @@ export default function App() {
         isLocating={isLocating}
         onOpenRouteInfo={() => setIsRouteInfoModalOpen(true)}
         currentPermissions={currentPermissions}
+        isCloudConnected={isCloudConnected}
+        isSyncing={isSyncing}
       />
 
       {/* Main Screen: Only GIS Interactive Map (Không hiển thị thông tin tuyến phố, người dùng bấm chọn khi cần xem) */}

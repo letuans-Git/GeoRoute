@@ -16,7 +16,10 @@ import {
   Info, 
   SlidersHorizontal, 
   Edit3, 
-  Trash2 
+  Trash2,
+  Cloud,
+  RefreshCw,
+  Globe
 } from 'lucide-react';
 import { RouteItem, UserAccount, EffectivePermissions, getUserEffectivePermissions } from '../types';
 
@@ -40,6 +43,8 @@ interface HeaderProps {
   isLocating: boolean;
   onOpenRouteInfo: () => void;
   currentPermissions?: EffectivePermissions;
+  isCloudConnected?: boolean;
+  isSyncing?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -62,6 +67,8 @@ export const Header: React.FC<HeaderProps> = ({
   isLocating,
   onOpenRouteInfo,
   currentPermissions,
+  isCloudConnected = true,
+  isSyncing = false,
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -119,6 +126,27 @@ export const Header: React.FC<HeaderProps> = ({
             <strong className="text-white">Tuấn Lê Software</strong>
             <span className="hidden md:inline"> • letuans@gmail.com</span>
           </span>
+        </div>
+
+        {/* Live Cloud Web App Sync Indicator */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isSyncing ? (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+              <RefreshCw className="w-2.5 h-2.5 animate-spin text-indigo-400" />
+              <span>Đang đồng bộ Đám mây...</span>
+            </span>
+          ) : isCloudConnected ? (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" title="Cơ sở dữ liệu Đám mây trực tuyến: Dữ liệu đồng bộ tức thời giữa máy tính và điện thoại">
+              <Globe className="w-2.5 h-2.5 text-emerald-400" />
+              <span className="hidden xs:inline">Web App Trực Tuyến</span>
+              <span className="xs:hidden">Online</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40" title="Chế độ ngoại tuyến">
+              <Cloud className="w-2.5 h-2.5 text-amber-400" />
+              <span>Cục bộ (Offline)</span>
+            </span>
+          )}
         </div>
       </div>
 

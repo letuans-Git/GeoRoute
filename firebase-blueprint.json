@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account with role-based access control and granular IAM permissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "password": { "type": "string" },
+        "role": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "lastLogin": { "type": "string" }
+      },
+      "required": ["id", "username", "name", "role", "status"]
+    },
+    "Route": {
+      "title": "Route",
+      "description": "GIS River or Street Route definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "description": { "type": "string" },
+        "province": { "type": "string" },
+        "status": { "type": "string" },
+        "isDefault": { "type": "boolean" },
+        "zoom": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "type"]
+    },
+    "LocationPoint": {
+      "title": "LocationPoint",
+      "description": "Field GPS Point (harbor, sand depot, business point)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "routeId": { "type": "string" },
+        "name": { "type": "string" },
+        "owner": { "type": "string" },
+        "status": { "type": "string" },
+        "phone": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "category": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "routeId", "name", "lat", "lng"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of all enterprise system users"
+    },
+    "/routes/{routeId}": {
+      "schema": "Route",
+      "description": "Collection of GIS river and street routes"
+    },
+    "/points/{pointId}": {
+      "schema": "LocationPoint",
+      "description": "Collection of real-world GPS points across all routes"
+    }
+  }
+}
