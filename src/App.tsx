@@ -725,7 +725,13 @@ export default function App() {
 
   // Gating check: Must be authenticated to access software
   if (!isAuthenticated) {
-    return <LoginView users={users} onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <LoginView 
+        users={users} 
+        onLoginSuccess={handleLoginSuccess} 
+        onUsersUpdated={(updatedUsers) => setUsers(updatedUsers)}
+      />
+    );
   }
 
   return (

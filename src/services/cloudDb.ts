@@ -126,6 +126,51 @@ export async function deleteCloudUser(userId: string): Promise<void> {
 }
 
 /**
+ * Fetch all users directly from Cloud Firestore once
+ */
+export async function fetchCloudUsersOnce(): Promise<UserAccount[]> {
+  try {
+    const snap = await getDocs(collection(db, USERS_COL));
+    if (!snap.empty) {
+      const cloudUsers = snap.docs.map((d) => d.data() as UserAccount);
+      safeStorage.setItem('georoute_users', JSON.stringify(cloudUsers));
+      return cloudUsers;
+    }
+  } catch (err) {
+    console.warn('[Firestore] fetchCloudUsersOnce error:', err);
+  }
+  return INITIAL_USERS;
+}
+
+/**
+ * Update user password directly in Cloud Firestore and local storage
+ */
+export async function updateCloudUserPassword(userId: string, newPass: string): Promise<boolean> {
+  try {
+    const userRef = doc(db, USERS_COL, userId);
+    await setDoc(userRef, { password: newPass, updatedAt: new Date().toISOString() }, { merge: true });
+    
+    // Also update cached users
+    const cached = safeStorage.getItem('georoute_users');
+    if (cached) {
+      try {
+        const users = JSON.parse(cached);
+        if (Array.isArray(users)) {
+          const updated = users.map((u: UserAccount) => u.id === userId ? { ...u, password: newPass } : u);
+          safeStorage.setItem('georoute_users', JSON.stringify(updated));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] updateCloudUserPassword error:', err);
+    return false;
+  }
+}
+
+/**
  * Subscribe to real-time Cloud Routes collection
  */
 export function subscribeCloudRoutes(
