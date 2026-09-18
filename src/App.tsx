@@ -10,6 +10,7 @@ import { LoginView } from './components/LoginView';
 import { UserManagementModal } from './components/UserManagementModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { LogoutConfirmModal } from './components/LogoutConfirmModal';
+import { safeStorage } from './utils/storage';
 import { 
   INITIAL_ROUTES, 
   INITIAL_POINTS, 
@@ -44,7 +45,7 @@ import {
 export default function App() {
   // Enterprise User Accounts State with localStorage persistence
   const [users, setUsers] = useState<UserAccount[]>(() => {
-    const saved = localStorage.getItem('georoute_users');
+    const saved = safeStorage.getItem('georoute_users');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -65,7 +66,7 @@ export default function App() {
 
   // Authentication State
   const [currentUser, setCurrentUser] = useState<UserAccount>(() => {
-    const savedUser = localStorage.getItem('georoute_current_user');
+    const savedUser = safeStorage.getItem('georoute_current_user');
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser);
@@ -84,14 +85,14 @@ export default function App() {
   });
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    const savedAuth = localStorage.getItem('georoute_is_authenticated');
+    const savedAuth = safeStorage.getItem('georoute_is_authenticated');
     return savedAuth === 'true';
   });
 
   // Load and synchronize initial routes ensuring default startup route is strictly respected
   const initialData = useMemo(() => {
     let savedRoutes: RouteItem[] | null = null;
-    const rawRoutes = localStorage.getItem('georoute_routes');
+    const rawRoutes = safeStorage.getItem('georoute_routes');
     if (rawRoutes) {
       try {
         savedRoutes = JSON.parse(rawRoutes);
@@ -101,7 +102,7 @@ export default function App() {
     }
 
     const baseList: RouteItem[] = (savedRoutes && savedRoutes.length > 0) ? savedRoutes : INITIAL_ROUTES;
-    const savedDefaultId = localStorage.getItem('georoute_default_route_id');
+    const savedDefaultId = safeStorage.getItem('georoute_default_route_id');
 
     // Determine target default ID
     let targetDefaultId: string | null = null;
@@ -139,7 +140,7 @@ export default function App() {
       status: r.id === targetDefaultId ? 'active' : r.status,
     }));
 
-    localStorage.setItem('georoute_default_route_id', targetDefaultId);
+    safeStorage.setItem('georoute_default_route_id', targetDefaultId);
 
     return {
       routes: normalized,
@@ -151,7 +152,7 @@ export default function App() {
   const [routes, setRoutes] = useState<RouteItem[]>(initialData.routes);
 
   const [points, setPoints] = useState<LocationPoint[]>(() => {
-    const saved = localStorage.getItem('georoute_points');
+    const saved = safeStorage.getItem('georoute_points');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -197,15 +198,15 @@ export default function App() {
 
   // Persist users, routes & points
   useEffect(() => {
-    localStorage.setItem('georoute_users', JSON.stringify(users));
+    safeStorage.setItem('georoute_users', JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem('georoute_routes', JSON.stringify(routes));
+    safeStorage.setItem('georoute_routes', JSON.stringify(routes));
   }, [routes]);
 
   useEffect(() => {
-    localStorage.setItem('georoute_points', JSON.stringify(points));
+    safeStorage.setItem('georoute_points', JSON.stringify(points));
   }, [points]);
 
   // Enterprise Role Permissions Matrix State
@@ -237,11 +238,11 @@ export default function App() {
     setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
 
     if (rememberMe) {
-      localStorage.setItem('georoute_is_authenticated', 'true');
-      localStorage.setItem('georoute_current_user', JSON.stringify(updatedUser));
+      safeStorage.setItem('georoute_is_authenticated', 'true');
+      safeStorage.setItem('georoute_current_user', JSON.stringify(updatedUser));
     } else {
-      localStorage.removeItem('georoute_is_authenticated');
-      localStorage.removeItem('georoute_current_user');
+      safeStorage.removeItem('georoute_is_authenticated');
+      safeStorage.removeItem('georoute_current_user');
     }
 
     const perms = getUserEffectivePermissions(updatedUser, rolePermissions);
@@ -251,8 +252,8 @@ export default function App() {
   // Logout handler
   const handleLogout = () => {
     setIsAuthenticated(false);
-    localStorage.removeItem('georoute_is_authenticated');
-    localStorage.removeItem('georoute_current_user');
+    safeStorage.removeItem('georoute_is_authenticated');
+    safeStorage.removeItem('georoute_current_user');
     showToast('Đã đăng xuất an toàn khỏi hệ thống!', 'info');
   };
 
@@ -270,7 +271,7 @@ export default function App() {
   const handleSwitchUser = (user: UserAccount) => {
     setCurrentUser(user);
     const perms = getUserEffectivePermissions(user, rolePermissions);
-    localStorage.setItem('georoute_current_user', JSON.stringify(user));
+    safeStorage.setItem('georoute_current_user', JSON.stringify(user));
     showToast(`Đã chuyển phiên làm việc sang: ${user.name} (${perms.roleName}${perms.isCustom ? ' - Custom IAM' : ''})`, 'info');
   };
 
@@ -288,7 +289,7 @@ export default function App() {
     setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
     if (currentUser.id === updatedUser.id) {
       setCurrentUser(updatedUser);
-      localStorage.setItem('georoute_current_user', JSON.stringify(updatedUser));
+      safeStorage.setItem('georoute_current_user', JSON.stringify(updatedUser));
     }
   };
 
@@ -301,7 +302,7 @@ export default function App() {
     const updatedCurrent = updatedUsers.find(u => u.id === currentUser.id);
     if (updatedCurrent) {
       setCurrentUser(updatedCurrent);
-      localStorage.setItem('georoute_current_user', JSON.stringify(updatedCurrent));
+      safeStorage.setItem('georoute_current_user', JSON.stringify(updatedCurrent));
     }
   };
 
@@ -465,7 +466,7 @@ export default function App() {
     const existingIndex = routes.findIndex(r => r.id === savedRoute.id);
     const existingRoute = existingIndex >= 0 ? routes[existingIndex] : null;
     if (savedRoute.isDefault) {
-      localStorage.setItem('georoute_default_route_id', savedRoute.id);
+      safeStorage.setItem('georoute_default_route_id', savedRoute.id);
     }
 
     const routeToSave: RouteItem = {
@@ -510,7 +511,7 @@ export default function App() {
       }))
     );
 
-    localStorage.setItem('georoute_default_route_id', routeId);
+    safeStorage.setItem('georoute_default_route_id', routeId);
     showToast(`Đã đặt tuyến "${targetRoute.name}" làm ngầm định khi khởi chạy chương trình!`, 'success');
   };
 
@@ -539,8 +540,8 @@ export default function App() {
       return;
     }
     const target = routes.find(r => r.id === routeId);
-    if (target?.isDefault || localStorage.getItem('georoute_default_route_id') === routeId) {
-      localStorage.removeItem('georoute_default_route_id');
+    if (target?.isDefault || safeStorage.getItem('georoute_default_route_id') === routeId) {
+      safeStorage.removeItem('georoute_default_route_id');
     }
     setRoutes(prev => prev.filter(r => r.id !== routeId));
     setPoints(prev => prev.filter(p => p.routeId !== routeId));
@@ -579,8 +580,8 @@ export default function App() {
     setPoints(INITIAL_POINTS);
     setCurrentRouteId(INITIAL_ROUTES[0].id);
     setSelectedPointId(null);
-    localStorage.removeItem('georoute_routes');
-    localStorage.removeItem('georoute_points');
+    safeStorage.removeItem('georoute_routes');
+    safeStorage.removeItem('georoute_points');
     showToast('Đã khôi phục về dữ liệu chuẩn xuất xưởng của hệ thống!', 'info');
   };
 

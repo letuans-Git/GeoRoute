@@ -1,3 +1,5 @@
+import { safeStorage } from './utils/storage';
+
 export type UserRole = 'super_admin' | 'admin' | 'route_manager' | 'surveyor' | 'viewer';
 
 // Commercial IAM Granular Permissions (CRUD across resources)
@@ -139,7 +141,7 @@ export const ROLE_PERMISSIONS = DEFAULT_ROLE_PERMISSIONS;
 
 export const loadStoredRolePermissions = (): Record<UserRole, RolePermissionConfig> => {
   try {
-    const saved = localStorage.getItem('georoute_role_permissions');
+    const saved = safeStorage.getItem('georoute_role_permissions');
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed && typeof parsed === 'object') {
@@ -157,7 +159,7 @@ export const loadStoredRolePermissions = (): Record<UserRole, RolePermissionConf
 
 export const saveStoredRolePermissions = (permissions: Record<UserRole, RolePermissionConfig>): void => {
   try {
-    localStorage.setItem('georoute_role_permissions', JSON.stringify(permissions));
+    safeStorage.setItem('georoute_role_permissions', JSON.stringify(permissions));
   } catch (e) {
     console.error('Error saving role permissions:', e);
   }
@@ -165,7 +167,7 @@ export const saveStoredRolePermissions = (permissions: Record<UserRole, RolePerm
 
 export const resetStoredRolePermissions = (): Record<UserRole, RolePermissionConfig> => {
   try {
-    localStorage.removeItem('georoute_role_permissions');
+    safeStorage.removeItem('georoute_role_permissions');
   } catch (e) {
     console.error('Error resetting role permissions:', e);
   }
