@@ -46,6 +46,9 @@ import {
   subscribeCloudUsers,
   subscribeCloudRoutes,
   subscribeCloudPoints,
+  subscribeCloudRolePermissions,
+  saveCloudRolePermissions,
+  syncAllDataToFirestore,
   saveCloudUser,
   deleteCloudUser,
   saveCloudRoute,
@@ -294,11 +297,23 @@ export default function App() {
       }
     );
 
+    const unsubRolePerms = subscribeCloudRolePermissions(
+      (cloudPerms) => {
+        if (cloudPerms) {
+          setRolePermissions(cloudPerms);
+        }
+      },
+      (err) => {
+        console.warn('Role permissions cloud sync error:', err);
+      }
+    );
+
     return () => {
       mounted = false;
       unsubUsers();
       unsubRoutes();
       unsubPoints();
+      unsubRolePerms();
     };
   }, []);
 
@@ -447,13 +462,15 @@ export default function App() {
   const handleSaveRolePermissions = (updatedPermissions: Record<UserRole, RolePermissionConfig>) => {
     setRolePermissions(updatedPermissions);
     saveStoredRolePermissions(updatedPermissions);
-    showToast('Đã lưu cấu hình Ma trận phân quyền (RBAC) thành công! Toàn bộ quyền hạn đã được áp dụng tức thì.', 'success');
+    saveCloudRolePermissions(updatedPermissions);
+    showToast('Đã lưu cấu hình Ma trận phân quyền (RBAC) lên Cloud thành công! Toàn bộ quyền hạn đã được áp dụng tức thì.', 'success');
   };
 
   const handleResetRolePermissions = () => {
     const defaults = resetStoredRolePermissions();
     setRolePermissions(defaults);
-    showToast('Đã khôi phục ma trận phân quyền về cấu hình mặc định ban đầu của hệ thống!', 'info');
+    saveCloudRolePermissions(defaults);
+    showToast('Đã khôi phục ma trận phân quyền về cấu hình mặc định ban đầu của hệ thống & đồng bộ Cloud!', 'info');
   };
 
   // Real GPS acquisition for header button
@@ -703,24 +720,43 @@ export default function App() {
     setIsUserManagementModalOpen(true);
   };
 
-  // Data Import / Reset Handlers
-  const handleImportData = (importedRoutes: RouteItem[], importedPoints: LocationPoint[]) => {
+  // Manual Master Cloud Synchronization Handler
+  const handleForceCloudSync = async () => {
+    setIsSyncing(true);
+    const res = await syncAllDataToFirestore(routes, points, users, rolePermissions);
+    setIsSyncing(false);
+    if (res.success) {
+      showToast(`Đã đồng bộ 100% dữ liệu lên Cloud Firestore thành công! (${res.routesCount} tuyến, ${res.pointsCount} điểm GPS, ${res.usersCount} tài khoản)`, 'success');
+    } else {
+      showToast(`Lỗi đồng bộ Cloud: ${res.error}`, 'error');
+    }
+    return res;
+  };
+
+  // Data Import / Reset Handlers with 100% Cloud Firestore sync
+  const handleImportData = async (importedRoutes: RouteItem[], importedPoints: LocationPoint[]) => {
     setRoutes(importedRoutes);
     setPoints(importedPoints);
     if (importedRoutes.length > 0) {
       setCurrentRouteId(importedRoutes[0].id);
     }
-    showToast('Phục hồi dữ liệu hệ thống thành công!', 'success');
+    setIsSyncing(true);
+    await syncAllDataToFirestore(importedRoutes, importedPoints, users, rolePermissions);
+    setIsSyncing(false);
+    showToast('Phục hồi dữ liệu hệ thống & đồng bộ 100% lên Cloud Firestore thành công!', 'success');
   };
 
-  const handleResetDefaultData = () => {
+  const handleResetDefaultData = async () => {
     setRoutes(INITIAL_ROUTES);
     setPoints(INITIAL_POINTS);
     setCurrentRouteId(INITIAL_ROUTES[0].id);
     setSelectedPointId(null);
     safeStorage.removeItem('georoute_routes');
     safeStorage.removeItem('georoute_points');
-    showToast('Đã khôi phục về dữ liệu chuẩn xuất xưởng của hệ thống!', 'info');
+    setIsSyncing(true);
+    await syncAllDataToFirestore(INITIAL_ROUTES, INITIAL_POINTS, INITIAL_USERS, rolePermissions);
+    setIsSyncing(false);
+    showToast('Đã khôi phục dữ liệu chuẩn & đồng bộ 100% lên Cloud Firestore!', 'info');
   };
 
   // Gating check: Must be authenticated to access software
@@ -783,6 +819,7 @@ export default function App() {
         currentPermissions={currentPermissions}
         isCloudConnected={isCloudConnected}
         isSyncing={isSyncing}
+        onForceCloudSync={handleForceCloudSync}
       />
 
       {/* Main Screen: Only GIS Interactive Map (Không hiển thị thông tin tuyến phố, người dùng bấm chọn khi cần xem) */}
@@ -887,6 +924,10 @@ export default function App() {
             onImportData={handleImportData}
             onResetDefaultData={handleResetDefaultData}
             permissions={currentPermissions}
+            onForceCloudSync={handleForceCloudSync}
+            usersCount={users.length}
+            isCloudConnected={isCloudConnected}
+            isSyncing={isSyncing}
           />
 
           <UserManagementModal

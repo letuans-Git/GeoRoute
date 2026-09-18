@@ -10,7 +10,11 @@ import {
   AlertCircle,
   ShieldAlert,
   Lock,
-  GripHorizontal
+  GripHorizontal,
+  Cloud,
+  Globe,
+  RefreshCw,
+  Sparkles
 } from 'lucide-react';
 import { RouteItem, LocationPoint, EffectivePermissions } from '../types';
 import { useDraggableModal } from '../hooks/useDraggableModal';
@@ -24,6 +28,10 @@ interface DataManagementModalProps {
   onImportData: (importedRoutes: RouteItem[], importedPoints: LocationPoint[]) => void;
   onResetDefaultData: () => void;
   permissions?: EffectivePermissions;
+  onForceCloudSync?: () => Promise<any>;
+  usersCount?: number;
+  isCloudConnected?: boolean;
+  isSyncing?: boolean;
 }
 
 export const DataManagementModal: React.FC<DataManagementModalProps> = ({
@@ -35,14 +43,36 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
   onImportData,
   onResetDefaultData,
   permissions,
+  onForceCloudSync,
+  usersCount = 5,
+  isCloudConnected = true,
+  isSyncing = false,
 }) => {
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isCloudSyncingLocal, setIsCloudSyncingLocal] = useState(false);
 
   const { dragStyle, headerProps } = useDraggableModal({ isOpen });
 
   if (!isOpen) return null;
+
+  const handleTriggerCloudSync = async () => {
+    if (!onForceCloudSync) return;
+    setIsCloudSyncingLocal(true);
+    setErrorMsg(null);
+    setImportStatus(null);
+    try {
+      const res = await onForceCloudSync();
+      if (res && res.success) {
+        setImportStatus(`Đã đồng bộ 100% dữ liệu lên Cloud Firestore thành công (${res.routesCount} tuyến, ${res.pointsCount} điểm GPS, ${res.usersCount} tài khoản)! Tất cả các thiết bị khác sẽ nhìn thấy ngay lập tức.`);
+      }
+    } catch (err: any) {
+      setErrorMsg(`Lỗi khi đồng bộ lên Cloud Firestore: ${err?.message || err}`);
+    } finally {
+      setIsCloudSyncingLocal(false);
+    }
+  };
 
   const canExport = permissions ? permissions.canExportData : true;
   const canImport = permissions ? permissions.canImportBackup : true;
@@ -210,6 +240,63 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Cloud Firestore 100% Real-time Master Sync Section */}
+          <div className="p-4 sm:p-5 bg-gradient-to-br from-indigo-950 via-slate-900 to-slate-950 text-white rounded-2xl border border-indigo-500/30 shadow-lg shrink-0">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="space-y-1.5 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/40">
+                    <Globe className="w-3 h-3 text-indigo-300" />
+                    Cloud Firestore 100% Trực Tuyến
+                  </span>
+                  <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Đang kết nối dữ liệu chung
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-white tracking-tight">
+                  Đồng Bộ Dữ Liệu 100% Cho Mọi Người Dùng Trên Toàn Cầu
+                </h4>
+                <p className="text-xs text-slate-300 leading-relaxed max-w-2xl">
+                  Toàn bộ dữ liệu tuyến bản đồ, tọa độ điểm GPS thực địa, tài khoản nhân sự và ma trận phân quyền được lưu trữ tập trung tại Google Cloud Firestore. Mọi thay đổi từ bất kỳ máy tính hay điện thoại nào đều tức thời hiển thị cho mọi người dùng khác ở khắp mọi nơi.
+                </p>
+
+                {/* Counts summary */}
+                <div className="flex flex-wrap items-center gap-2 sm:gap-4 pt-1">
+                  <div className="px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700 text-xs">
+                    <span className="text-slate-400">Tuyến quản lý: </span>
+                    <strong className="text-amber-300">{routes.length}</strong>
+                  </div>
+                  <div className="px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700 text-xs">
+                    <span className="text-slate-400">Điểm GPS thực địa: </span>
+                    <strong className="text-emerald-300">{points.length}</strong>
+                  </div>
+                  <div className="px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700 text-xs">
+                    <span className="text-slate-400">Tài khoản người dùng: </span>
+                    <strong className="text-cyan-300">{usersCount}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action button */}
+              <div className="shrink-0 flex items-center">
+                <button
+                  id="btn-sync-all-firestore"
+                  type="button"
+                  onClick={handleTriggerCloudSync}
+                  disabled={isCloudSyncingLocal || isSyncing}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 active:scale-98 text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Ghi đồng bộ 100% tất cả tuyến, điểm và người dùng lên Google Cloud Firestore"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isCloudSyncingLocal || isSyncing ? 'animate-spin text-amber-300' : 'text-white'}`} />
+                  <span>
+                    {isCloudSyncingLocal || isSyncing ? 'Đang đồng bộ lên Cloud...' : 'Đồng Bộ 100% Lên Cloud Ngay'}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
 
           {/* 2-Column Section for Export and Import */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 flex-1">

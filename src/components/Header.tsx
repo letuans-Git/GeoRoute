@@ -45,6 +45,7 @@ interface HeaderProps {
   currentPermissions?: EffectivePermissions;
   isCloudConnected?: boolean;
   isSyncing?: boolean;
+  onForceCloudSync?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -69,6 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
   currentPermissions,
   isCloudConnected = true,
   isSyncing = false,
+  onForceCloudSync,
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -133,19 +135,31 @@ export const Header: React.FC<HeaderProps> = ({
           {isSyncing ? (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
               <RefreshCw className="w-2.5 h-2.5 animate-spin text-indigo-400" />
-              <span>Đang đồng bộ Đám mây...</span>
+              <span>Đang đồng bộ Firestore...</span>
             </span>
           ) : isCloudConnected ? (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" title="Cơ sở dữ liệu Đám mây trực tuyến: Dữ liệu đồng bộ tức thời giữa máy tính và điện thoại">
+            <button
+              id="btn-header-cloud-sync"
+              type="button"
+              onClick={onForceCloudSync}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 transition-colors cursor-pointer"
+              title="Cloud Firestore đã đồng bộ 100%. Bấm để đồng bộ lại toàn bộ dữ liệu ngay lập tức."
+            >
               <Globe className="w-2.5 h-2.5 text-emerald-400" />
-              <span className="hidden xs:inline">Web App Trực Tuyến</span>
-              <span className="xs:hidden">Online</span>
-            </span>
+              <span className="hidden xs:inline">Cloud Firestore 100% (Đồng bộ chung)</span>
+              <span className="xs:hidden">Cloud 100%</span>
+            </button>
           ) : (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40" title="Chế độ ngoại tuyến">
+            <button
+              id="btn-header-cloud-reconnect"
+              type="button"
+              onClick={onForceCloudSync}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] sm:text-[10px] font-semibold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors cursor-pointer"
+              title="Chưa kết nối Cloud Firestore. Bấm để kết nối lại."
+            >
               <Cloud className="w-2.5 h-2.5 text-amber-400" />
-              <span>Cục bộ (Offline)</span>
-            </span>
+              <span>Kết nối lại Cloud</span>
+            </button>
           )}
         </div>
       </div>

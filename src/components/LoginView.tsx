@@ -17,7 +17,6 @@ import {
   CheckCircle2,
   KeyRound,
   RefreshCw,
-  Copy,
   Check
 } from 'lucide-react';
 import { useDraggableModal } from '../hooks/useDraggableModal';
@@ -55,7 +54,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, onU
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [copiedAccount, setCopiedAccount] = useState<string | null>(null);
 
   // Forgot / Reset Password Modal State
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -80,12 +78,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, onU
       return () => clearTimeout(timer);
     }
   }, []);
-
-  const handleCopy = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedAccount(label);
-    setTimeout(() => setCopiedAccount(null), 2000);
-  };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -505,83 +497,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, onU
                   )}
                 </button>
               </form>
-
-              {/* Thông tin 2 tài khoản cơ sở dữ liệu chung (Đồng bộ mọi thiết bị) */}
-              <div className="mt-5 p-3.5 rounded-xl bg-slate-950/80 border border-indigo-500/25">
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-200 mb-2">
-                  <span className="flex items-center gap-1.5 text-indigo-400">
-                    <KeyRound className="w-3.5 h-3.5" />
-                    Tài khoản Cơ sở Dữ liệu Đám mây:
-                  </span>
-                  <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    Đồng bộ Internet
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  {/* Tài khoản 1: Super Admin */}
-                  <div className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between text-xs">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-white">Tuấn Lê Software</span>
-                        <span className="text-[10px] text-amber-400 bg-amber-500/15 px-1.5 py-0.2 rounded">Super Admin</span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 flex items-center gap-2">
-                        <span>User: <strong className="text-indigo-300 font-mono">letuans@gmail.com</strong></span>
-                        <span>•</span>
-                        <span>Pass: <strong className="text-emerald-400 font-mono">123</strong></span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy('letuans@gmail.com', 'admin')}
-                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
-                      title="Sao chép email để dán vào ô"
-                    >
-                      {copiedAccount === 'admin' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedAccount === 'admin' ? 'Đã chép' : 'Sao chép'}</span>
-                    </button>
-                  </div>
-
-                  {/* Tài khoản 2: Route Manager */}
-                  <div className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between text-xs">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-white">Trần Văn Nam</span>
-                        <span className="text-[10px] text-indigo-400 bg-indigo-500/15 px-1.5 py-0.2 rounded">Quản lý Tuyến</span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 flex items-center gap-2">
-                        <span>User: <strong className="text-indigo-300 font-mono">namtran</strong></span>
-                        <span>•</span>
-                        <span>Pass: <strong className="text-emerald-400 font-mono">123</strong></span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy('namtran', 'manager')}
-                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
-                      title="Sao chép tên đăng nhập"
-                    >
-                      {copiedAccount === 'manager' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedAccount === 'manager' ? 'Đã chép' : 'Sao chép'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Bạn có thể nhập tên, email hoặc SĐT để đăng nhập.</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setResetIdentifier('letuans@gmail.com');
-                      setShowForgotModal(true);
-                    }}
-                    className="text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
-                  >
-                    Đổi mật khẩu mới
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
 
