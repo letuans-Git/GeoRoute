@@ -189,28 +189,38 @@ export interface EffectivePermissions extends UserPermissions {
 
 // Compute exact effective permissions for an individual user
 export const getUserEffectivePermissions = (
-  user: UserAccount,
+  user?: UserAccount | null,
   rolePermissionsMap?: Record<UserRole, RolePermissionConfig>
 ): EffectivePermissions => {
+  const safeUser: UserAccount = user || {
+    id: 'user-admin',
+    username: 'tuanle',
+    name: 'Tuấn Lê Software',
+    email: 'letuans@gmail.com',
+    role: 'super_admin',
+    title: 'Giám đốc Công nghệ & Sáng lập',
+    status: 'active',
+    createdAt: new Date().toISOString()
+  };
   const roles = rolePermissionsMap || loadStoredRolePermissions();
-  const roleConfig = roles[user.role] || roles.viewer || DEFAULT_ROLE_PERMISSIONS.viewer;
-  const isSuper = user.role === 'super_admin' || user.role === 'admin' || user.email === 'letuans@gmail.com';
+  const roleConfig = roles[safeUser.role] || roles.viewer || DEFAULT_ROLE_PERMISSIONS.viewer;
+  const isSuper = safeUser.role === 'super_admin' || safeUser.role === 'admin' || safeUser.email === 'letuans@gmail.com';
 
-  if (user.customPermissions) {
+  if (safeUser.customPermissions) {
     return {
-      canViewRoute: user.customPermissions.canViewRoute ?? true,
-      canCreateRoute: user.customPermissions.canCreateRoute ?? false,
-      canEditRoute: user.customPermissions.canEditRoute ?? false,
-      canDeleteRoute: user.customPermissions.canDeleteRoute ?? false,
-      canViewPoint: user.customPermissions.canViewPoint ?? true,
-      canCreatePoint: user.customPermissions.canCreatePoint ?? false,
-      canEditPoint: user.customPermissions.canEditPoint ?? false,
-      canDeletePoint: user.customPermissions.canDeletePoint ?? false,
-      canExportData: user.customPermissions.canExportData ?? false,
-      canImportBackup: user.customPermissions.canImportBackup ?? false,
-      canManageUsers: isSuper ? true : (user.customPermissions.canManageUsers ?? false),
+      canViewRoute: safeUser.customPermissions.canViewRoute ?? true,
+      canCreateRoute: safeUser.customPermissions.canCreateRoute ?? false,
+      canEditRoute: safeUser.customPermissions.canEditRoute ?? false,
+      canDeleteRoute: safeUser.customPermissions.canDeleteRoute ?? false,
+      canViewPoint: safeUser.customPermissions.canViewPoint ?? true,
+      canCreatePoint: safeUser.customPermissions.canCreatePoint ?? false,
+      canEditPoint: safeUser.customPermissions.canEditPoint ?? false,
+      canDeletePoint: safeUser.customPermissions.canDeletePoint ?? false,
+      canExportData: safeUser.customPermissions.canExportData ?? false,
+      canImportBackup: safeUser.customPermissions.canImportBackup ?? false,
+      canManageUsers: isSuper ? true : (safeUser.customPermissions.canManageUsers ?? false),
       isCustom: true,
-      role: user.role,
+      role: safeUser.role,
       roleName: roleConfig.roleName,
       badgeColor: roleConfig.badgeColor,
     };

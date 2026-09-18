@@ -69,14 +69,14 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   const [overlayOpacity, setOverlayOpacity] = useState<number>(0.75);
 
   // View / Zoom restriction lock state
-  const [isViewLocked, setIsViewLocked] = useState<boolean>(currentRoute.restrictBounds ?? true);
+  const [isViewLocked, setIsViewLocked] = useState<boolean>(currentRoute?.restrictBounds ?? true);
 
   const activeTileLayerRef = useRef<L.TileLayer | null>(null);
 
   // Synchronize lock state when route changes
   useEffect(() => {
-    setIsViewLocked(currentRoute.restrictBounds ?? true);
-  }, [currentRoute.id, currentRoute.restrictBounds]);
+    setIsViewLocked(currentRoute?.restrictBounds ?? true);
+  }, [currentRoute?.id, currentRoute?.restrictBounds]);
 
   // Set Tile Layer helper
   const setTileLayer = (type: 'google_hybrid' | 'google_streets' | 'esri_sat' | 'osm') => {

@@ -50,12 +50,16 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((u: UserAccount) => {
-            let updated = u;
-            if (updated.name === 'Kỹ sư Tuấn Lê') updated = { ...updated, name: 'Tuấn Lê Software' };
-            if (updated.username === 'tuanle' || updated.phone === '0903 888 999') updated = { ...updated, phone: '0913.566.532' };
+          const loaded = parsed.map((u: UserAccount) => {
+            let updated = { ...u };
+            if (updated.name === 'Kỹ sư Tuấn Lê') updated.name = 'Tuấn Lê Software';
+            if (updated.username === 'tuanle' || updated.phone === '0903 888 999') updated.phone = '0913.566.532';
+            if (!updated.password) updated.password = '123';
             return updated;
           });
+          const existingUsernames = new Set(loaded.map(u => (u.username || '').toLowerCase()));
+          const missing = INITIAL_USERS.filter(u => !existingUsernames.has(u.username.toLowerCase()));
+          return [...loaded, ...missing];
         }
       } catch (e) {
         console.error(e);
@@ -70,13 +74,18 @@ export default function App() {
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser);
-        if (parsed.name === 'Kỹ sư Tuấn Lê') {
-          parsed.name = 'Tuấn Lê Software';
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.name === 'Kỹ sư Tuấn Lê') {
+            parsed.name = 'Tuấn Lê Software';
+          }
+          if (parsed.username === 'tuanle' || parsed.phone === '0903 888 999') {
+            parsed.phone = '0913.566.532';
+          }
+          if (!parsed.password) {
+            parsed.password = '123';
+          }
+          return parsed;
         }
-        if (parsed.username === 'tuanle' || parsed.phone === '0903 888 999') {
-          parsed.phone = '0913.566.532';
-        }
-        return parsed;
       } catch (e) {
         console.error(e);
       }
@@ -214,11 +223,19 @@ export default function App() {
     return loadStoredRolePermissions();
   });
 
-  const currentRoute =
-    routes.find((r) => r.id === currentRouteId) ||
-    routes.find((r) => r.status !== 'inactive') ||
-    routes[0];
-  const currentRoutePoints = points.filter((p) => p.routeId === currentRoute?.id);
+  const currentRoute = useMemo(() => {
+    return (
+      routes.find((r) => r.id === currentRouteId) ||
+      routes.find((r) => r.status !== 'inactive') ||
+      routes[0] ||
+      INITIAL_ROUTES[0]
+    );
+  }, [routes, currentRouteId]);
+
+  const currentRoutePoints = useMemo(() => {
+    if (!currentRoute || !Array.isArray(points)) return [];
+    return points.filter((p) => p && p.routeId === currentRoute.id);
+  }, [points, currentRoute]);
   
   // Commercial IAM Effective Permissions (combining role permissions + individual custom permissions)
   const currentPermissions = useMemo(() => {
@@ -226,24 +243,27 @@ export default function App() {
   }, [currentUser, rolePermissions]);
 
   // Login handler
-  const handleLoginSuccess = (user: UserAccount, rememberMe: boolean) => {
+  const handleLoginSuccess = (user: UserAccount, rememberMe: boolean = true) => {
     const updatedUser: UserAccount = {
       ...user,
+      password: user.password || '123',
       lastLogin: new Date().toISOString()
     };
     setCurrentUser(updatedUser);
     setIsAuthenticated(true);
 
     // Update in users collection
-    setUsers(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+    setUsers(prev => {
+      const exists = prev.some(u => u.id === user.id);
+      if (exists) {
+        return prev.map(u => u.id === user.id ? updatedUser : u);
+      }
+      return [updatedUser, ...prev];
+    });
 
-    if (rememberMe) {
-      safeStorage.setItem('georoute_is_authenticated', 'true');
-      safeStorage.setItem('georoute_current_user', JSON.stringify(updatedUser));
-    } else {
-      safeStorage.removeItem('georoute_is_authenticated');
-      safeStorage.removeItem('georoute_current_user');
-    }
+    // Always persist authentication to protect against unexpected reloads on Vercel
+    safeStorage.setItem('georoute_is_authenticated', 'true');
+    safeStorage.setItem('georoute_current_user', JSON.stringify(updatedUser));
 
     const perms = getUserEffectivePermissions(updatedUser, rolePermissions);
     showToast(`Đăng nhập thành công! Chào mừng ${user.name} (${perms.roleName}${perms.isCustom ? ' - Quyền tùy biến' : ''})`, 'success');
