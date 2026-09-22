@@ -45,21 +45,34 @@
 }
 
 /* Leaflet Customization */
+.leaflet-pane.leaflet-popup-pane {
+  z-index: 10000 !important;
+}
+
+.leaflet-popup {
+  z-index: 10000 !important;
+}
+
 .leaflet-popup-content-wrapper {
   padding: 0;
   border-radius: 14px;
-  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.18), 0 10px 10px -5px rgb(0 0 0 / 0.08);
+  border: 1px solid rgba(226, 232, 240, 0.95);
   overflow: hidden;
+  position: relative;
+  z-index: 10000 !important;
 }
 
 .leaflet-popup-content {
   margin: 0 !important;
   line-height: 1.5;
+  position: relative;
+  z-index: 10000 !important;
 }
 
 .leaflet-popup-tip-container {
   overflow: hidden;
+  z-index: 10000 !important;
 }
 
 .custom-marker-icon {

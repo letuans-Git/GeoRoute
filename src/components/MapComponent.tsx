@@ -21,6 +21,7 @@ import {
   SlidersHorizontal
 } from 'lucide-react';
 import { RouteItem, LocationPoint, UserRole, getRolePermissions, EffectivePermissions, getSegmentsFromPolyline, getAllPointsFromPolyline } from '../types';
+import { ImageLightboxModal } from './ImageLightboxModal';
 
 interface MapComponentProps {
   currentRoute: RouteItem;
@@ -67,6 +68,11 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   const [showRedRoute, setShowRedRoute] = useState<boolean>(true);
   const [showImageOverlay, setShowImageOverlay] = useState<boolean>(true);
   const [overlayOpacity, setOverlayOpacity] = useState<number>(0.75);
+  const [lightboxImages, setLightboxImages] = useState<string[]>([]);
+  const [lightboxIndex, setLightboxIndex] = useState<number>(0);
+  const [lightboxTitle, setLightboxTitle] = useState<string>('');
+  const [lightboxSubtitle, setLightboxSubtitle] = useState<string>('');
+  const [isLightboxOpen, setIsLightboxOpen] = useState<boolean>(false);
 
   // View / Zoom restriction lock state
   const [isViewLocked, setIsViewLocked] = useState<boolean>(currentRoute?.restrictBounds ?? true);
@@ -453,7 +459,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           : 'bg-rose-50 text-rose-700 border-rose-200';
 
       const popupContent = document.createElement('div');
-      popupContent.className = 'p-4 min-w-[280px] max-w-[340px] text-slate-800 font-sans';
+      popupContent.className = 'p-4 min-w-[280px] max-w-[340px] text-slate-800 font-sans relative z-[10000]';
       popupContent.innerHTML = `
         <div class="flex items-start justify-between gap-2 border-b border-slate-100 pb-2.5 mb-2.5">
           <div>
@@ -497,6 +503,33 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               "${point.notes}"
             </div>
           ` : ''}
+
+          ${point.businessLicenseImages && point.businessLicenseImages.length > 0 ? `
+            <div class="mt-2.5 pt-2 border-t border-slate-100">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[10px] font-bold text-slate-700 uppercase flex items-center gap-1">
+                  <span>📄 Giấy ĐKKD (${point.businessLicenseImages.length} ảnh)</span>
+                </span>
+                <span 
+                  id="popup-view-dkkd-${point.id}"
+                  class="text-[10px] text-indigo-600 font-bold hover:underline cursor-pointer"
+                >
+                  Xem phóng to
+                </span>
+              </div>
+              <div class="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                ${point.businessLicenseImages.map((img, i) => `
+                  <img 
+                    src="${img}" 
+                    alt="Giấy ĐKKD #${i + 1}" 
+                    data-dkkd-idx="${i}"
+                    class="w-12 h-12 object-cover rounded-md border border-slate-200 cursor-pointer hover:opacity-85 hover:border-indigo-400 transition-all shrink-0" 
+                    title="Nhấp để xem ảnh #${i + 1}"
+                  />
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
         </div>
 
         <div class="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
@@ -536,10 +569,25 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         </div>
       `;
 
-      // Attach DOM events for admin buttons inside popup
+      // Attach DOM events for admin buttons and image lightbox triggers inside popup
       popupContent.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
-        if (target.id === `popup-edit-${point.id}`) {
+        const thumbTarget = target.closest('[data-dkkd-idx]') as HTMLElement | null;
+
+        if (thumbTarget && point.businessLicenseImages && point.businessLicenseImages.length > 0) {
+          const idx = parseInt(thumbTarget.getAttribute('data-dkkd-idx') || '0', 10);
+          setLightboxImages(point.businessLicenseImages);
+          setLightboxIndex(idx);
+          setLightboxTitle(`Giấy ĐKKD - ${point.owner}`);
+          setLightboxSubtitle(point.name);
+          setIsLightboxOpen(true);
+        } else if (target.id === `popup-view-dkkd-${point.id}` && point.businessLicenseImages && point.businessLicenseImages.length > 0) {
+          setLightboxImages(point.businessLicenseImages);
+          setLightboxIndex(0);
+          setLightboxTitle(`Giấy ĐKKD - ${point.owner}`);
+          setLightboxSubtitle(point.name);
+          setIsLightboxOpen(true);
+        } else if (target.id === `popup-edit-${point.id}`) {
           marker.closePopup();
           onEditPoint(point);
         } else if (target.id === `popup-delete-${point.id}`) {
@@ -547,7 +595,14 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         }
       });
 
-      marker.bindPopup(popupContent, { maxWidth: 360 });
+      marker.bindPopup(popupContent, { 
+        maxWidth: 360,
+        className: 'custom-location-popup',
+        autoPan: true,
+        autoPanPaddingTopLeft: L.point(80, 110),
+        autoPanPaddingBottomRight: L.point(40, 40),
+        keepInView: true,
+      });
 
       marker.on('click', () => {
         onSelectPoint(point);
@@ -559,7 +614,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       if (point.id === selectedPointId && !isEditingThisPoint) {
         setTimeout(() => {
           marker.openPopup();
-          map.panTo([point.lat, point.lng], { animate: true });
         }, 100);
       }
     });
@@ -823,6 +877,16 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           </div>
         )}
       </div>
+
+      {/* Lightbox for inspecting Business Registration Certificate (ĐKKD) */}
+      <ImageLightboxModal
+        isOpen={isLightboxOpen}
+        onClose={() => setIsLightboxOpen(false)}
+        images={lightboxImages}
+        initialIndex={lightboxIndex}
+        title={lightboxTitle}
+        subtitle={lightboxSubtitle}
+      />
     </div>
   );
 };

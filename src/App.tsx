@@ -546,6 +546,7 @@ export default function App() {
         category: savedData.category || (currentRoute.type === 'river' ? 'Bến cảng' : 'Cơ sở kinh doanh'),
         address: savedData.address,
         notes: savedData.notes,
+        businessLicenseImages: savedData.businessLicenseImages || [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

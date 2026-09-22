@@ -101,7 +101,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
     const routePoints = points.filter(p => p.routeId === currentRoute.id);
     
     // Header
-    const headers = ['Mã điểm', 'Tên vị trí', 'Chủ sở hữu', 'Tình trạng', 'Số điện thoại', 'Vĩ độ (Lat)', 'Kinh độ (Lng)', 'Phân loại', 'Địa chỉ', 'Ghi chú'];
+    const headers = ['Mã điểm', 'Tên vị trí', 'Chủ sở hữu', 'Tình trạng', 'Số điện thoại', 'Vĩ độ (Lat)', 'Kinh độ (Lng)', 'Phân loại', 'Địa chỉ', 'Ghi chú', 'Số lượng ảnh ĐKKD'];
     
     // Rows
     const rows = routePoints.map(p => [
@@ -115,6 +115,7 @@ export const DataManagementModal: React.FC<DataManagementModalProps> = ({
       `"${p.category}"`,
       `"${(p.address || '').replace(/"/g, '""')}"`,
       `"${(p.notes || '').replace(/"/g, '""')}"`,
+      p.businessLicenseImages ? p.businessLicenseImages.length : 0,
     ]);
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');

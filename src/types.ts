@@ -479,6 +479,7 @@ export interface LocationPoint {
   address?: string;
   notes?: string;
   imageUrl?: string;
+  businessLicenseImages?: string[]; // Danh sách hình ảnh giấy đăng ký kinh doanh (ĐKKD) của chủ sở hữu
   createdAt: string;
   updatedAt: string;
 }

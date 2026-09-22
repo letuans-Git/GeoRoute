@@ -528,6 +528,11 @@ export const RouteInfoModal: React.FC<RouteInfoModalProps> = ({
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${getStatusBadge(point.status)}`}>
                                 {point.status}
                               </span>
+                              {point.businessLicenseImages && point.businessLicenseImages.length > 0 && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  📄 {point.businessLicenseImages.length} ảnh ĐKKD
+                                </span>
+                              )}
                             </div>
 
                             <h3 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">

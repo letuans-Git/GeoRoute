@@ -19,9 +19,11 @@ import {
   Utensils,
   Store,
   ExternalLink,
-  LogOut
+  LogOut,
+  FileText
 } from 'lucide-react';
 import { LocationPoint, RouteItem, UserRole, getRolePermissions } from '../types';
+import { ImageLightboxModal } from './ImageLightboxModal';
 
 interface SidebarProps {
   currentRoute: RouteItem;
@@ -54,6 +56,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [confirmDeletePointId, setConfirmDeletePointId] = useState<string | null>(null);
+  const [lightboxImages, setLightboxImages] = useState<string[]>([]);
+  const [lightboxTitle, setLightboxTitle] = useState('');
+  const [lightboxSubtitle, setLightboxSubtitle] = useState('');
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
   const permissions = getRolePermissions(userRole);
 
@@ -307,6 +313,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
                         <span>GPS: {point.lat.toFixed(5)}, {point.lng.toFixed(5)}</span>
                       </div>
+
+                      {/* Business License preview badge */}
+                      {point.businessLicenseImages && point.businessLicenseImages.length > 0 && (
+                        <div 
+                          className="flex items-center gap-1.5 pt-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLightboxImages(point.businessLicenseImages || []);
+                            setLightboxTitle(`Giấy ĐKKD - ${point.owner}`);
+                            setLightboxSubtitle(point.name);
+                            setIsLightboxOpen(true);
+                          }}
+                        >
+                          <span 
+                            className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+                            title="Xem chi tiết ảnh Giấy đăng ký kinh doanh"
+                          >
+                            <FileText className="w-3 h-3 text-indigo-600" />
+                            <span>{point.businessLicenseImages.length} ảnh Giấy ĐKKD</span>
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Bottom action row: Edit, Delete based on RBAC permissions */}
@@ -404,6 +432,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </div>
       )}
+
+      {/* Lightbox for inspecting Business Registration Certificate */}
+      <ImageLightboxModal
+        isOpen={isLightboxOpen}
+        onClose={() => setIsLightboxOpen(false)}
+        images={lightboxImages}
+        title={lightboxTitle}
+        subtitle={lightboxSubtitle}
+      />
     </aside>
   );
 };
