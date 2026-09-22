@@ -39,14 +39,18 @@ import {
   Phone, 
   Waves, 
   Navigation,
-  ExternalLink
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
 import {
   seedFirestoreIfEmpty,
+  fetchInitialCloudData,
   subscribeCloudUsers,
   subscribeCloudRoutes,
   subscribeCloudPoints,
   subscribeCloudRolePermissions,
+  subscribeCloudAppState,
+  setCloudDefaultRoute,
   saveCloudRolePermissions,
   syncAllDataToFirestore,
   saveCloudUser,
@@ -58,43 +62,19 @@ import {
 } from './services/cloudDb';
 
 export default function App() {
-  // Enterprise User Accounts State with canonical database synchronization across all devices
+  // Cloud Ready State: ensures 100% data parity between PC and Mobile before rendering
+  const [isCloudReady, setIsCloudReady] = useState<boolean>(false);
+  const [isCloudConnected, setIsCloudConnected] = useState<boolean>(true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // Enterprise User Accounts State
   const [users, setUsers] = useState<UserAccount[]>(() => {
     try {
       const saved = safeStorage.getItem('georoute_users');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Khởi tạo map từ INITIAL_USERS chuẩn làm cơ sở dữ liệu gốc
-          const userMap = new Map<string, UserAccount>();
-          INITIAL_USERS.forEach((u) => {
-            userMap.set(u.username.toLowerCase(), { ...u });
-          });
-
-          // Hòa trộn và đồng bộ dữ liệu người dùng lưu trên thiết bị
-          parsed.forEach((storedUser: UserAccount) => {
-            if (!storedUser || !storedUser.username) return;
-            const uname = storedUser.username.toLowerCase();
-            const initial = userMap.get(uname);
-            if (initial) {
-              // Cập nhật người dùng chuẩn nhưng đảm bảo password và status active đồng bộ đồng nhất
-              userMap.set(uname, {
-                ...initial,
-                ...storedUser,
-                password: storedUser.password?.trim() || initial.password || '123',
-                status: storedUser.status || 'active',
-                phone: initial.phone || storedUser.phone
-              });
-            } else {
-              // Người dùng được thêm mới bởi quản trị viên
-              userMap.set(uname, {
-                ...storedUser,
-                password: storedUser.password?.trim() || '123',
-                status: storedUser.status || 'active'
-              });
-            }
-          });
-          return Array.from(userMap.values());
+          return parsed;
         }
       }
     } catch (e) {
@@ -138,82 +118,37 @@ export default function App() {
     return sessionAuth === 'true';
   });
 
-  // Load and synchronize initial routes ensuring default startup route is strictly respected
-  const initialData = useMemo(() => {
-    let savedRoutes: RouteItem[] | null = null;
-    const rawRoutes = safeStorage.getItem('georoute_routes');
-    if (rawRoutes) {
-      try {
-        savedRoutes = JSON.parse(rawRoutes);
-      } catch (e) {
-        console.error(e);
+  // Master routes and points state initialized from cache or defaults, then overridden by Cloud Firestore
+  const [routes, setRoutes] = useState<RouteItem[]>(() => {
+    try {
+      const saved = safeStorage.getItem('georoute_routes');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
+    } catch (e) {
+      console.error(e);
     }
-
-    const baseList: RouteItem[] = (savedRoutes && savedRoutes.length > 0) ? savedRoutes : INITIAL_ROUTES;
-    const savedDefaultId = safeStorage.getItem('georoute_default_route_id');
-
-    // Determine target default ID
-    let targetDefaultId: string | null = null;
-
-    // 1. Explicit saved default ID
-    if (savedDefaultId && baseList.some(r => r.id === savedDefaultId)) {
-      targetDefaultId = savedDefaultId;
-    }
-
-    // 2. Route marked isDefault
-    if (!targetDefaultId) {
-      const marked = baseList.find(r => r.isDefault);
-      if (marked) {
-        targetDefaultId = marked.id;
-      }
-    }
-
-    // 3. Fallback to INITIAL_ROUTES default
-    if (!targetDefaultId) {
-      const initDefault = INITIAL_ROUTES.find(r => r.isDefault);
-      if (initDefault && baseList.some(r => r.id === initDefault.id)) {
-        targetDefaultId = initDefault.id;
-      }
-    }
-
-    // 4. Fallback to first active route or first in list
-    if (!targetDefaultId) {
-      const firstActive = baseList.find(r => r.status !== 'inactive') || baseList[0];
-      targetDefaultId = firstActive.id;
-    }
-
-    const normalized = baseList.map(r => ({
-      ...r,
-      isDefault: r.id === targetDefaultId,
-      status: r.id === targetDefaultId ? 'active' : r.status,
-    }));
-
-    safeStorage.setItem('georoute_default_route_id', targetDefaultId);
-
-    return {
-      routes: normalized,
-      defaultRouteId: targetDefaultId,
-    };
-  }, []);
-
-  // Persistence in localStorage with mock fallbacks
-  const [routes, setRoutes] = useState<RouteItem[]>(initialData.routes);
+    return INITIAL_ROUTES;
+  });
 
   const [points, setPoints] = useState<LocationPoint[]>(() => {
-    const saved = safeStorage.getItem('georoute_points');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error(e);
+    try {
+      const saved = safeStorage.getItem('georoute_points');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
+    } catch (e) {
+      console.error(e);
     }
     return INITIAL_POINTS;
   });
 
-  // Current selected route initialized strictly with the default route upon startup
-  const [currentRouteId, setCurrentRouteId] = useState<string>(initialData.defaultRouteId);
+  // Default route ID: starts with saved ID or cloud primary route 'route-1789722803292' (Sông ruột lợn)
+  const [currentRouteId, setCurrentRouteId] = useState<string>(() => {
+    return safeStorage.getItem('georoute_default_route_id') || 'route-1789722803292';
+  });
 
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
@@ -237,8 +172,6 @@ export default function App() {
 
   // Toast Notification state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
-  const [isCloudConnected, setIsCloudConnected] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
 
   const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToast({ message, type });
@@ -247,66 +180,114 @@ export default function App() {
     }, 4000);
   };
 
-  // Real-time Cloud Synchronization (Firestore)
-  // Seeds default data if cloud database is empty, then listens for real-time changes
+  // Enterprise Role Permissions Matrix State
+  const [rolePermissions, setRolePermissions] = useState<Record<UserRole, RolePermissionConfig>>(() => {
+    return loadStoredRolePermissions();
+  });
+
+  // 100% Cloud Firestore Master Synchronization
+  // Fetches latest data directly from Cloud Firestore before mounting UI to guarantee 100% identical data on Mobile & Desktop
   useEffect(() => {
     let mounted = true;
     setIsSyncing(true);
 
-    seedFirestoreIfEmpty().then(() => {
-      if (!mounted) return;
-      setIsSyncing(false);
-    });
+    let unsubUsers = () => {};
+    let unsubRoutes = () => {};
+    let unsubPoints = () => {};
+    let unsubRolePerms = () => {};
+    let unsubAppState = () => {};
 
-    const unsubUsers = subscribeCloudUsers(
-      (cloudUsers) => {
-        if (cloudUsers && cloudUsers.length > 0) {
-          setUsers(cloudUsers);
-          setIsCloudConnected(true);
-        }
-      },
-      (err) => {
-        console.warn('Users cloud sync error:', err);
-        setIsCloudConnected(false);
-      }
-    );
+    // 1. Fetch complete cloud data once on startup to guarantee 100% parity across mobile & PC
+    fetchInitialCloudData()
+      .then((cloudPayload) => {
+        if (!mounted) return;
+        setUsers(cloudPayload.users);
+        setRoutes(cloudPayload.routes);
+        setPoints(cloudPayload.points);
+        setRolePermissions(cloudPayload.rolePermissions);
+        setCurrentRouteId(cloudPayload.defaultRouteId);
+        setIsCloudConnected(true);
+        setIsCloudReady(true);
+        setIsSyncing(false);
 
-    const unsubRoutes = subscribeCloudRoutes(
-      (cloudRoutes) => {
-        if (cloudRoutes && cloudRoutes.length > 0) {
-          setRoutes(cloudRoutes);
-          setIsCloudConnected(true);
+        // Verify current logged in user against fresh cloud users
+        const savedAuth = safeStorage.getItem('georoute_is_authenticated') === 'true' ||
+                          safeSessionStorage.getItem('georoute_session_auth') === 'true';
+        if (savedAuth) {
+          const storedUserRaw = safeStorage.getItem('georoute_current_user') || 
+                                safeSessionStorage.getItem('georoute_session_user');
+          if (storedUserRaw) {
+            try {
+              const parsed = JSON.parse(storedUserRaw);
+              const liveUser = cloudPayload.users.find(u => 
+                u.id === parsed.id || u.username?.toLowerCase() === parsed.username?.toLowerCase()
+              );
+              if (liveUser && liveUser.status !== 'inactive') {
+                setCurrentUser(liveUser);
+              } else if (!liveUser || liveUser.status === 'inactive') {
+                setIsAuthenticated(false);
+                safeStorage.removeItem('georoute_is_authenticated');
+                safeStorage.removeItem('georoute_current_user');
+                safeSessionStorage.removeItem('georoute_session_auth');
+                safeSessionStorage.removeItem('georoute_session_user');
+              }
+            } catch (e) {
+              console.error(e);
+            }
+          }
         }
-      },
-      (err) => {
-        console.warn('Routes cloud sync error:', err);
-        setIsCloudConnected(false);
-      }
-    );
 
-    const unsubPoints = subscribeCloudPoints(
-      (cloudPoints) => {
-        if (cloudPoints) {
-          setPoints(cloudPoints);
-          setIsCloudConnected(true);
-        }
-      },
-      (err) => {
-        console.warn('Points cloud sync error:', err);
-        setIsCloudConnected(false);
-      }
-    );
+        // 2. Establish live subscriptions after initial sync
+        unsubUsers = subscribeCloudUsers((cloudUsers) => {
+          if (!mounted) return;
+          if (cloudUsers && cloudUsers.length > 0) {
+            setUsers(cloudUsers);
+            setIsCloudConnected(true);
+          }
+        });
 
-    const unsubRolePerms = subscribeCloudRolePermissions(
-      (cloudPerms) => {
-        if (cloudPerms) {
-          setRolePermissions(cloudPerms);
+        unsubRoutes = subscribeCloudRoutes((cloudRoutes) => {
+          if (!mounted) return;
+          if (cloudRoutes && cloudRoutes.length > 0) {
+            setRoutes(cloudRoutes);
+            setIsCloudConnected(true);
+            setCurrentRouteId(prevId => {
+              if (cloudRoutes.some(r => r.id === prevId)) return prevId;
+              const def = cloudRoutes.find(r => r.isDefault) || cloudRoutes.find(r => r.status !== 'inactive') || cloudRoutes[0];
+              return def ? def.id : prevId;
+            });
+          }
+        });
+
+        unsubPoints = subscribeCloudPoints((cloudPoints) => {
+          if (!mounted) return;
+          if (cloudPoints) {
+            setPoints(cloudPoints);
+            setIsCloudConnected(true);
+          }
+        });
+
+        unsubRolePerms = subscribeCloudRolePermissions((cloudPerms) => {
+          if (!mounted) return;
+          if (cloudPerms) {
+            setRolePermissions(cloudPerms);
+          }
+        });
+
+        unsubAppState = subscribeCloudAppState((state) => {
+          if (!mounted) return;
+          if (state.defaultRouteId) {
+            safeStorage.setItem('georoute_default_route_id', state.defaultRouteId);
+          }
+        });
+      })
+      .catch((err) => {
+        console.warn('Initial cloud fetch error, falling back to local cache:', err);
+        if (mounted) {
+          setIsCloudReady(true);
+          setIsSyncing(false);
         }
-      },
-      (err) => {
-        console.warn('Role permissions cloud sync error:', err);
-      }
-    );
+      });
 
     return () => {
       mounted = false;
@@ -314,10 +295,11 @@ export default function App() {
       unsubRoutes();
       unsubPoints();
       unsubRolePerms();
+      unsubAppState();
     };
   }, []);
 
-  // Persist users, routes & points locally for offline speed
+  // Persist users, routes & points locally as fast offline cache
   useEffect(() => {
     safeStorage.setItem('georoute_users', JSON.stringify(users));
   }, [users]);
@@ -329,11 +311,6 @@ export default function App() {
   useEffect(() => {
     safeStorage.setItem('georoute_points', JSON.stringify(points));
   }, [points]);
-
-  // Enterprise Role Permissions Matrix State
-  const [rolePermissions, setRolePermissions] = useState<Record<UserRole, RolePermissionConfig>>(() => {
-    return loadStoredRolePermissions();
-  });
 
   const currentRoute = useMemo(() => {
     return (
@@ -371,6 +348,9 @@ export default function App() {
       }
       return [updatedUser, ...prev];
     });
+
+    // Sync login timestamp to Cloud Firestore
+    saveCloudUser(updatedUser);
 
     if (rememberMe) {
       safeStorage.setItem('georoute_is_authenticated', 'true');
@@ -631,6 +611,9 @@ export default function App() {
         return r;
       }));
       saveCloudRoute(routeToSave);
+      if (routeToSave.isDefault) {
+        setCloudDefaultRoute(routeToSave.id, routes);
+      }
       showToast(`Đã cập nhật và hiển thị ngay bản đồ tuyến "${routeToSave.name}"!`, 'success');
     } else {
       setRoutes(prev => [
@@ -638,6 +621,9 @@ export default function App() {
         ...(routeToSave.isDefault ? prev.map(r => ({ ...r, isDefault: false })) : prev)
       ]);
       saveCloudRoute(routeToSave);
+      if (routeToSave.isDefault) {
+        setCloudDefaultRoute(routeToSave.id, routes);
+      }
       showToast(`Đã tạo mới và hiển thị ngay bản đồ tuyến "${routeToSave.name}"!`, 'success');
     }
 
@@ -663,6 +649,7 @@ export default function App() {
     );
 
     safeStorage.setItem('georoute_default_route_id', routeId);
+    setCloudDefaultRoute(routeId, routes);
     showToast(`Đã đặt tuyến "${targetRoute.name}" làm ngầm định khi khởi chạy chương trình!`, 'success');
   };
 
@@ -758,6 +745,32 @@ export default function App() {
     setIsSyncing(false);
     showToast('Đã khôi phục dữ liệu chuẩn & đồng bộ 100% lên Cloud Firestore!', 'info');
   };
+
+  // Cloud Ready Loading Screen: Ensures 100% data parity between PC and Mobile
+  if (!isCloudReady) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen w-screen bg-slate-950 text-white font-sans p-6 select-none">
+        <div className="relative mb-6">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-500 flex items-center justify-center shadow-2xl shadow-indigo-500/40 animate-pulse">
+            <Navigation className="w-8 h-8 text-white" />
+          </div>
+          <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-slate-950 flex items-center justify-center">
+            <CheckCircle className="w-3.5 h-3.5 text-white" />
+          </div>
+        </div>
+        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white mb-2 text-center">
+          GeoRoute Pro Enterprise GIS
+        </h2>
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-indigo-400 text-xs sm:text-sm font-medium mb-3">
+          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+          <span>Đang kết nối cơ sở dữ liệu Cloud Firestore dùng chung...</span>
+        </div>
+        <p className="text-xs text-slate-400 text-center max-w-sm leading-relaxed">
+          Đảm bảo 100% dữ liệu tuyến đường, điểm mốc và người dùng thống nhất tuyệt đối giữa Máy tính và Thiết bị di động.
+        </p>
+      </div>
+    );
+  }
 
   // Gating check: Must be authenticated to access software
   if (!isAuthenticated) {

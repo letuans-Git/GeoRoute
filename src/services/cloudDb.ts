@@ -2,6 +2,7 @@ import {
   collection, 
   doc, 
   getDocs, 
+  getDoc,
   setDoc, 
   deleteDoc, 
   onSnapshot,
@@ -17,6 +18,7 @@ const ROUTES_COL = 'routes';
 const POINTS_COL = 'points';
 const CONFIG_COL = 'system_config';
 const ROLE_PERMS_DOC = 'role_permissions';
+const APP_STATE_DOC = 'app_state';
 
 /**
  * Clean data before sending to Firestore
@@ -103,51 +105,61 @@ export function deserializeRouteFromFirestore(data: any): RouteItem {
 }
 
 /**
- * Seed initial data to cloud Firestore if collections are empty or missing standard master records.
+ * Seed initial data to cloud Firestore if collections are empty.
  * Guarantees that any device (iPhone, PC, Mac, Tablet) anywhere on the internet
- * will immediately see the full dataset upon first load.
+ * will immediately see the full dataset upon first load without overwriting existing data.
  */
 export async function seedFirestoreIfEmpty(): Promise<void> {
   try {
-    // 1. Ensure all standard users exist in Cloud Firestore
+    // 1. Ensure users exist in Cloud Firestore
     const usersSnap = await getDocs(collection(db, USERS_COL));
-    const existingUserIds = new Set(usersSnap.docs.map((d) => d.id));
-    const missingUsers = INITIAL_USERS.filter((u) => !existingUserIds.has(u.id));
-
-    if (missingUsers.length > 0) {
-      console.log(`[Firestore] Seeding ${missingUsers.length} missing initial users into Cloud Firestore...`);
-      for (const u of missingUsers) {
+    if (usersSnap.empty) {
+      console.log(`[Firestore] Seeding initial users into empty Cloud Firestore...`);
+      for (const u of INITIAL_USERS) {
         await setDoc(doc(db, USERS_COL, u.id), cleanFirestoreData(u), { merge: true });
+      }
+    } else {
+      // Ensure super admin user exists so login is never locked out
+      const hasAdmin = usersSnap.docs.some(d => d.id === 'user-admin' || d.data()?.username === 'tuanle');
+      if (!hasAdmin) {
+        await setDoc(doc(db, USERS_COL, INITIAL_USERS[0].id), cleanFirestoreData(INITIAL_USERS[0]), { merge: true });
       }
     }
 
-    // 2. Ensure all standard routes exist in Cloud Firestore
+    // 2. Ensure routes exist in Cloud Firestore
     const routesSnap = await getDocs(collection(db, ROUTES_COL));
-    const existingRouteIds = new Set(routesSnap.docs.map((d) => d.id));
-    const missingRoutes = INITIAL_ROUTES.filter((r) => !existingRouteIds.has(r.id));
-
-    if (missingRoutes.length > 0) {
-      console.log(`[Firestore] Seeding ${missingRoutes.length} missing initial routes into Cloud Firestore...`);
-      for (const r of missingRoutes) {
+    if (routesSnap.empty) {
+      console.log(`[Firestore] Seeding initial routes into empty Cloud Firestore...`);
+      for (const r of INITIAL_ROUTES) {
         await setDoc(doc(db, ROUTES_COL, r.id), serializeRouteForFirestore(r), { merge: true });
       }
     }
 
-    // 3. Ensure all standard points exist in Cloud Firestore
+    // 3. Ensure points exist in Cloud Firestore
     const pointsSnap = await getDocs(collection(db, POINTS_COL));
-    const existingPointIds = new Set(pointsSnap.docs.map((d) => d.id));
-    const missingPoints = INITIAL_POINTS.filter((p) => !existingPointIds.has(p.id));
-
-    if (missingPoints.length > 0) {
-      console.log(`[Firestore] Seeding ${missingPoints.length} missing initial points into Cloud Firestore...`);
-      for (const p of missingPoints) {
+    if (pointsSnap.empty) {
+      console.log(`[Firestore] Seeding initial points into empty Cloud Firestore...`);
+      for (const p of INITIAL_POINTS) {
         await setDoc(doc(db, POINTS_COL, p.id), cleanFirestoreData(p), { merge: true });
       }
     }
 
     // 4. Ensure standard role permissions exist in Cloud Firestore
     const roleDocRef = doc(db, CONFIG_COL, ROLE_PERMS_DOC);
-    await setDoc(roleDocRef, cleanFirestoreData(DEFAULT_ROLE_PERMISSIONS), { merge: true });
+    const roleSnap = await getDoc(roleDocRef);
+    if (!roleSnap.exists()) {
+      await setDoc(roleDocRef, cleanFirestoreData(DEFAULT_ROLE_PERMISSIONS), { merge: true });
+    }
+
+    // 5. Ensure app state document exists
+    const appStateRef = doc(db, CONFIG_COL, APP_STATE_DOC);
+    const appStateSnap = await getDoc(appStateRef);
+    if (!appStateSnap.exists()) {
+      await setDoc(appStateRef, {
+        defaultRouteId: 'route-1789722803292',
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    }
 
   } catch (err) {
     console.warn('[Firestore] Error while checking/seeding Cloud database:', err);
@@ -455,3 +467,139 @@ export async function saveCloudRolePermissions(perms: Record<UserRole, RolePermi
     console.warn('[Firestore] saveCloudRolePermissions error:', e);
   }
 }
+
+export interface CloudInitialPayload {
+  users: UserAccount[];
+  routes: RouteItem[];
+  points: LocationPoint[];
+  rolePermissions: Record<UserRole, RolePermissionConfig>;
+  defaultRouteId: string;
+}
+
+/**
+ * Fetch initial comprehensive cloud dataset to guarantee 100% identical startup across all devices (PC, Mobile, Tablet)
+ */
+export async function fetchInitialCloudData(): Promise<CloudInitialPayload> {
+  // Ensure collection seeding only if empty
+  await seedFirestoreIfEmpty();
+
+  const [usersSnap, routesSnap, pointsSnap, permsSnap, appStateSnap] = await Promise.all([
+    getDocs(collection(db, USERS_COL)),
+    getDocs(collection(db, ROUTES_COL)),
+    getDocs(collection(db, POINTS_COL)),
+    getDoc(doc(db, CONFIG_COL, ROLE_PERMS_DOC)),
+    getDoc(doc(db, CONFIG_COL, APP_STATE_DOC)),
+  ]);
+
+  const users = !usersSnap.empty 
+    ? usersSnap.docs.map(d => d.data() as UserAccount)
+    : INITIAL_USERS;
+
+  const routes = !routesSnap.empty
+    ? routesSnap.docs.map(d => deserializeRouteFromFirestore(d.data()))
+    : INITIAL_ROUTES;
+
+  const points = !pointsSnap.empty
+    ? pointsSnap.docs.map(d => d.data() as LocationPoint)
+    : INITIAL_POINTS;
+
+  let rolePermissions = DEFAULT_ROLE_PERMISSIONS;
+  if (permsSnap.exists()) {
+    rolePermissions = permsSnap.data() as Record<UserRole, RolePermissionConfig>;
+  }
+
+  let defaultRouteId = 'route-1789722803292';
+  if (appStateSnap.exists() && appStateSnap.data()?.defaultRouteId) {
+    defaultRouteId = appStateSnap.data()?.defaultRouteId;
+  } else {
+    const defRoute = routes.find(r => r.isDefault);
+    if (defRoute) {
+      defaultRouteId = defRoute.id;
+    } else if (routes.length > 0) {
+      defaultRouteId = routes[0].id;
+    }
+  }
+
+  // Double check that defaultRouteId exists in routes
+  if (!routes.some(r => r.id === defaultRouteId) && routes.length > 0) {
+    const activeRoute = routes.find(r => r.status !== 'inactive') || routes[0];
+    defaultRouteId = activeRoute.id;
+  }
+
+  // Update localStorage with fresh data
+  safeStorage.setItem('georoute_users', JSON.stringify(users));
+  safeStorage.setItem('georoute_routes', JSON.stringify(routes));
+  safeStorage.setItem('georoute_points', JSON.stringify(points));
+  safeStorage.setItem('georoute_role_permissions', JSON.stringify(rolePermissions));
+  safeStorage.setItem('georoute_default_route_id', defaultRouteId);
+
+  return {
+    users,
+    routes,
+    points,
+    rolePermissions,
+    defaultRouteId
+  };
+}
+
+/**
+ * Subscribe to real-time Cloud App State (default route, active global configuration)
+ */
+export function subscribeCloudAppState(
+  onUpdate: (state: { defaultRouteId: string }) => void,
+  onError?: (err: any) => void
+): () => void {
+  const unsub = onSnapshot(
+    doc(db, CONFIG_COL, APP_STATE_DOC),
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data?.defaultRouteId) {
+          safeStorage.setItem('georoute_default_route_id', data.defaultRouteId);
+          onUpdate({ defaultRouteId: data.defaultRouteId });
+        }
+      }
+    },
+    (err) => {
+      console.warn('[Firestore] App state subscription error:', err);
+      if (onError) onError(err);
+    }
+  );
+  return unsub;
+}
+
+/**
+ * Set and persist default route in Cloud Firestore so all devices see the same default
+ */
+export async function setCloudDefaultRoute(routeId: string, currentRoutes?: RouteItem[]): Promise<void> {
+  try {
+    // 1. Update app_state document
+    await setDoc(doc(db, CONFIG_COL, APP_STATE_DOC), {
+      defaultRouteId: routeId,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    // 2. Mark isDefault in routes collection
+    if (currentRoutes && currentRoutes.length > 0) {
+      for (const r of currentRoutes) {
+        const isDef = r.id === routeId;
+        if (r.isDefault !== isDef) {
+          await setDoc(doc(db, ROUTES_COL, r.id), {
+            isDefault: isDef,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        }
+      }
+    } else {
+      await setDoc(doc(db, ROUTES_COL, routeId), {
+        isDefault: true,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    }
+
+    safeStorage.setItem('georoute_default_route_id', routeId);
+  } catch (err) {
+    console.warn('[Firestore] setCloudDefaultRoute error:', err);
+  }
+}
+
