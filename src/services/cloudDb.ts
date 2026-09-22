@@ -111,56 +111,67 @@ export function deserializeRouteFromFirestore(data: any): RouteItem {
  */
 export async function seedFirestoreIfEmpty(): Promise<void> {
   try {
-    // 1. Ensure users exist in Cloud Firestore
-    const usersSnap = await getDocs(collection(db, USERS_COL));
+    // Run all checks in parallel for maximum speed
+    const [usersSnap, routesSnap, pointsSnap, roleSnap, appStateSnap] = await Promise.all([
+      getDocs(collection(db, USERS_COL)),
+      getDocs(collection(db, ROUTES_COL)),
+      getDocs(collection(db, POINTS_COL)),
+      getDoc(doc(db, CONFIG_COL, ROLE_PERMS_DOC)),
+      getDoc(doc(db, CONFIG_COL, APP_STATE_DOC)),
+    ]);
+
+    const batch = writeBatch(db);
+    let hasWrites = false;
+
+    // 1. Ensure users exist
     if (usersSnap.empty) {
-      console.log(`[Firestore] Seeding initial users into empty Cloud Firestore...`);
       for (const u of INITIAL_USERS) {
-        await setDoc(doc(db, USERS_COL, u.id), cleanFirestoreData(u), { merge: true });
+        batch.set(doc(db, USERS_COL, u.id), cleanFirestoreData(u), { merge: true });
+        hasWrites = true;
       }
     } else {
-      // Ensure super admin user exists so login is never locked out
       const hasAdmin = usersSnap.docs.some(d => d.id === 'user-admin' || d.data()?.username === 'tuanle');
       if (!hasAdmin) {
-        await setDoc(doc(db, USERS_COL, INITIAL_USERS[0].id), cleanFirestoreData(INITIAL_USERS[0]), { merge: true });
+        batch.set(doc(db, USERS_COL, INITIAL_USERS[0].id), cleanFirestoreData(INITIAL_USERS[0]), { merge: true });
+        hasWrites = true;
       }
     }
 
-    // 2. Ensure routes exist in Cloud Firestore
-    const routesSnap = await getDocs(collection(db, ROUTES_COL));
+    // 2. Ensure routes exist
     if (routesSnap.empty) {
-      console.log(`[Firestore] Seeding initial routes into empty Cloud Firestore...`);
       for (const r of INITIAL_ROUTES) {
-        await setDoc(doc(db, ROUTES_COL, r.id), serializeRouteForFirestore(r), { merge: true });
+        batch.set(doc(db, ROUTES_COL, r.id), serializeRouteForFirestore(r), { merge: true });
+        hasWrites = true;
       }
     }
 
-    // 3. Ensure points exist in Cloud Firestore
-    const pointsSnap = await getDocs(collection(db, POINTS_COL));
+    // 3. Ensure points exist
     if (pointsSnap.empty) {
-      console.log(`[Firestore] Seeding initial points into empty Cloud Firestore...`);
       for (const p of INITIAL_POINTS) {
-        await setDoc(doc(db, POINTS_COL, p.id), cleanFirestoreData(p), { merge: true });
+        batch.set(doc(db, POINTS_COL, p.id), cleanFirestoreData(p), { merge: true });
+        hasWrites = true;
       }
     }
 
-    // 4. Ensure standard role permissions exist in Cloud Firestore
-    const roleDocRef = doc(db, CONFIG_COL, ROLE_PERMS_DOC);
-    const roleSnap = await getDoc(roleDocRef);
+    // 4. Ensure role permissions exist
     if (!roleSnap.exists()) {
-      await setDoc(roleDocRef, cleanFirestoreData(DEFAULT_ROLE_PERMISSIONS), { merge: true });
+      batch.set(doc(db, CONFIG_COL, ROLE_PERMS_DOC), cleanFirestoreData(DEFAULT_ROLE_PERMISSIONS), { merge: true });
+      hasWrites = true;
     }
 
     // 5. Ensure app state document exists
-    const appStateRef = doc(db, CONFIG_COL, APP_STATE_DOC);
-    const appStateSnap = await getDoc(appStateRef);
     if (!appStateSnap.exists()) {
-      await setDoc(appStateRef, {
+      batch.set(doc(db, CONFIG_COL, APP_STATE_DOC), {
         defaultRouteId: 'route-1789722803292',
         updatedAt: new Date().toISOString()
       }, { merge: true });
+      hasWrites = true;
     }
 
+    if (hasWrites) {
+      await batch.commit();
+      console.log('[Firestore] Batched initial seeding committed successfully.');
+    }
   } catch (err) {
     console.warn('[Firestore] Error while checking/seeding Cloud database:', err);
   }
@@ -168,7 +179,7 @@ export async function seedFirestoreIfEmpty(): Promise<void> {
 
 /**
  * Full master synchronization: writes 100% of routes, points, and users into Cloud Firestore.
- * Used for one-click manual synchronization or after importing backups.
+ * Uses atomic writeBatch for maximum performance and instant cloud commit.
  */
 export async function syncAllDataToFirestore(
   routes: RouteItem[],
@@ -177,25 +188,29 @@ export async function syncAllDataToFirestore(
   rolePermissions?: Record<UserRole, RolePermissionConfig>
 ): Promise<{ success: boolean; routesCount: number; pointsCount: number; usersCount: number; error?: string }> {
   try {
+    const batch = writeBatch(db);
+
     // 1. Sync routes
     for (const r of routes) {
-      await setDoc(doc(db, ROUTES_COL, r.id), serializeRouteForFirestore(r), { merge: true });
+      batch.set(doc(db, ROUTES_COL, r.id), serializeRouteForFirestore(r), { merge: true });
     }
 
     // 2. Sync points
     for (const p of points) {
-      await setDoc(doc(db, POINTS_COL, p.id), cleanFirestoreData(p), { merge: true });
+      batch.set(doc(db, POINTS_COL, p.id), cleanFirestoreData(p), { merge: true });
     }
 
     // 3. Sync users
     for (const u of users) {
-      await setDoc(doc(db, USERS_COL, u.id), cleanFirestoreData(u), { merge: true });
+      batch.set(doc(db, USERS_COL, u.id), cleanFirestoreData(u), { merge: true });
     }
 
     // 4. Sync role permissions if provided
     if (rolePermissions) {
-      await setDoc(doc(db, CONFIG_COL, ROLE_PERMS_DOC), cleanFirestoreData(rolePermissions), { merge: true });
+      batch.set(doc(db, CONFIG_COL, ROLE_PERMS_DOC), cleanFirestoreData(rolePermissions), { merge: true });
     }
+
+    await batch.commit();
 
     return {
       success: true,
@@ -478,11 +493,9 @@ export interface CloudInitialPayload {
 
 /**
  * Fetch initial comprehensive cloud dataset to guarantee 100% identical startup across all devices (PC, Mobile, Tablet)
+ * Executes parallel fetch with zero redundant pre-checks for highest mobile performance.
  */
 export async function fetchInitialCloudData(): Promise<CloudInitialPayload> {
-  // Ensure collection seeding only if empty
-  await seedFirestoreIfEmpty();
-
   const [usersSnap, routesSnap, pointsSnap, permsSnap, appStateSnap] = await Promise.all([
     getDocs(collection(db, USERS_COL)),
     getDocs(collection(db, ROUTES_COL)),
@@ -490,6 +503,11 @@ export async function fetchInitialCloudData(): Promise<CloudInitialPayload> {
     getDoc(doc(db, CONFIG_COL, ROLE_PERMS_DOC)),
     getDoc(doc(db, CONFIG_COL, APP_STATE_DOC)),
   ]);
+
+  // Only trigger background seeding if database collections are genuinely empty
+  if (usersSnap.empty || routesSnap.empty) {
+    seedFirestoreIfEmpty().catch(e => console.warn('[Firestore] Background seed error:', e));
+  }
 
   const users = !usersSnap.empty 
     ? usersSnap.docs.map(d => d.data() as UserAccount)
@@ -540,6 +558,49 @@ export async function fetchInitialCloudData(): Promise<CloudInitialPayload> {
     rolePermissions,
     defaultRouteId
   };
+}
+
+/**
+ * Fast cloud fetch with timeout fallback so mobile devices on slow/unstable cellular connections
+ * instantly render the local cache without waiting or hanging.
+ */
+export async function fetchInitialCloudDataWithTimeout(timeoutMs = 3000): Promise<CloudInitialPayload> {
+  const fetchPromise = fetchInitialCloudData();
+  const timeoutPromise = new Promise<CloudInitialPayload>((resolve) => {
+    setTimeout(() => {
+      try {
+        const cachedUsers = safeStorage.getItem('georoute_users');
+        const cachedRoutes = safeStorage.getItem('georoute_routes');
+        const cachedPoints = safeStorage.getItem('georoute_points');
+        const cachedPerms = safeStorage.getItem('georoute_role_permissions');
+        const cachedDefRoute = safeStorage.getItem('georoute_default_route_id');
+
+        const users = cachedUsers ? JSON.parse(cachedUsers) : INITIAL_USERS;
+        const routes = cachedRoutes ? JSON.parse(cachedRoutes) : INITIAL_ROUTES;
+        const points = cachedPoints ? JSON.parse(cachedPoints) : INITIAL_POINTS;
+        const rolePermissions = cachedPerms ? JSON.parse(cachedPerms) : DEFAULT_ROLE_PERMISSIONS;
+        const defaultRouteId = cachedDefRoute || (routes[0]?.id ?? 'route-1789722803292');
+
+        resolve({
+          users,
+          routes,
+          points,
+          rolePermissions,
+          defaultRouteId,
+        });
+      } catch {
+        resolve({
+          users: INITIAL_USERS,
+          routes: INITIAL_ROUTES,
+          points: INITIAL_POINTS,
+          rolePermissions: DEFAULT_ROLE_PERMISSIONS,
+          defaultRouteId: 'route-1789722803292',
+        });
+      }
+    }, timeoutMs);
+  });
+
+  return Promise.race([fetchPromise, timeoutPromise]);
 }
 
 /**
