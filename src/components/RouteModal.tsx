@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   X, 
   Layers, 
@@ -112,6 +112,19 @@ export const RouteModal: React.FC<RouteModalProps> = ({
   const [imageFileName, setImageFileName] = useState<string>(
     initialRoute?.mapOverlay?.fileName || ''
   );
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRemoveImage = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    setUploadedImagePreview(null);
+    setImageFileName('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   // Re-sync when initialRoute changes
   useEffect(() => {
@@ -142,6 +155,10 @@ export const RouteModal: React.FC<RouteModalProps> = ({
       if (initialRoute.mapOverlay?.imageUrl) {
         setUploadedImagePreview(initialRoute.mapOverlay.imageUrl);
         setImageFileName(initialRoute.mapOverlay.fileName || 'overlay.png');
+        setShowAdvancedOptions(true);
+      } else {
+        setUploadedImagePreview(null);
+        setImageFileName('');
       }
     } else {
       // Reset defaults for Create Mode
@@ -170,6 +187,7 @@ export const RouteModal: React.FC<RouteModalProps> = ({
       setIsDefault(false);
       setUploadedImagePreview(null);
       setImageFileName('');
+      setShowAdvancedOptions(false);
     }
   }, [initialRoute, isOpen]);
 
@@ -274,7 +292,7 @@ export const RouteModal: React.FC<RouteModalProps> = ({
       updatedAt: new Date().toISOString(),
     };
 
-    if (uploadedImagePreview) {
+    if (uploadedImagePreview && uploadedImagePreview.trim().length > 0) {
       const offset = type === 'river' ? 0.025 : 0.008;
       savedRoute.mapOverlay = {
         imageUrl: uploadedImagePreview,
@@ -286,6 +304,8 @@ export const RouteModal: React.FC<RouteModalProps> = ({
         opacity: 0.75,
         visible: true,
       };
+    } else {
+      delete savedRoute.mapOverlay;
     }
 
     onSaveRoute(savedRoute);
@@ -631,43 +651,83 @@ export const RouteModal: React.FC<RouteModalProps> = ({
                     </div>
 
                     <div>
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[10px] font-medium text-slate-600 flex items-center gap-1">
-                          <Upload className="w-2.5 h-2.5" />
-                          Ảnh thực địa
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1">
+                          <Upload className="w-2.5 h-2.5 text-indigo-600" />
+                          Ảnh thực địa (Lớp phủ bản đồ)
                         </span>
                         {uploadedImagePreview && (
                           <button
                             type="button"
-                            onClick={() => { setUploadedImagePreview(null); setImageFileName(''); }}
-                            className="text-[10px] text-rose-600 hover:underline cursor-pointer"
+                            id="btn-remove-field-photo-top"
+                            onClick={handleRemoveImage}
+                            className="text-[10px] font-bold text-rose-600 hover:text-rose-700 flex items-center gap-0.5 cursor-pointer transition-colors"
+                            title="Xóa ảnh thực địa khỏi tuyến này"
                           >
-                            Xóa
+                            <Trash2 className="w-2.5 h-2.5 text-rose-600" />
+                            <span>Xóa ảnh</span>
                           </button>
                         )}
                       </div>
+
                       <input
+                        ref={fileInputRef}
                         id="file-upload-map-image"
                         type="file"
                         accept="image/*"
                         onChange={handleImageUpload}
                         className="hidden"
                       />
-                      <label
-                        htmlFor="file-upload-map-image"
-                        className="block p-1.5 text-center border border-dashed border-slate-300 hover:border-indigo-400 rounded-md bg-slate-50 cursor-pointer transition-colors"
-                      >
-                        {uploadedImagePreview ? (
-                          <span className="text-[10px] font-semibold text-emerald-700 flex items-center justify-center gap-1 truncate">
-                            <CheckCircle className="w-2.5 h-2.5 shrink-0" />
-                            {imageFileName}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-slate-400 hover:text-indigo-600 block">
+
+                      {uploadedImagePreview ? (
+                        <div className="p-1.5 border border-slate-200 rounded-md bg-slate-50 space-y-1.5">
+                          <div className="relative rounded overflow-hidden border border-slate-200 bg-slate-900/5 aspect-16/9 max-h-24 flex items-center justify-center">
+                            <img
+                              src={uploadedImagePreview}
+                              alt="Ảnh thực địa tuyến"
+                              className="w-full h-full object-contain"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-medium text-emerald-700 flex items-center gap-1 truncate max-w-[120px]" title={imageFileName}>
+                              <CheckCircle className="w-2.5 h-2.5 shrink-0 text-emerald-600" />
+                              <span className="truncate">{imageFileName || 'Ảnh thực địa'}</span>
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <label
+                                htmlFor="file-upload-map-image"
+                                className="px-1.5 py-0.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded text-[9px] font-semibold cursor-pointer transition-colors"
+                                title="Chọn tệp ảnh khác thay thế"
+                              >
+                                Đổi ảnh
+                              </label>
+                              <button
+                                type="button"
+                                id="btn-delete-field-photo"
+                                onClick={handleRemoveImage}
+                                className="px-1.5 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[9px] font-bold flex items-center gap-0.5 cursor-pointer transition-colors shadow-2xs"
+                                title="Xóa bỏ ảnh thực địa này"
+                              >
+                                <Trash2 className="w-2.5 h-2.5 text-rose-600" />
+                                <span>Xóa</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <label
+                          htmlFor="file-upload-map-image"
+                          className="flex flex-col items-center justify-center p-2 text-center border border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/30 rounded-md bg-slate-50 cursor-pointer transition-colors group"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 mb-0.5" />
+                          <span className="text-[10px] font-medium text-slate-500 group-hover:text-indigo-600 block">
                             Tải lên ảnh thực địa
                           </span>
-                        )}
-                      </label>
+                          <span className="text-[8px] text-slate-400">
+                            PNG, JPG, JPEG (Hiển thị phủ trên bản đồ)
+                          </span>
+                        </label>
+                      )}
                     </div>
                   </div>
                 )}

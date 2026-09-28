@@ -652,25 +652,34 @@ export default function App() {
       updatedAt: new Date().toISOString(),
     };
 
+    // Khi người dùng xóa Ảnh thực địa, đảm bảo xóa triệt để thuộc tính mapOverlay
+    if (!savedRoute.mapOverlay || !savedRoute.mapOverlay.imageUrl) {
+      delete routeToSave.mapOverlay;
+    }
+
     if (existingIndex >= 0) {
-      setRoutes(prev => prev.map(r => {
+      const updatedRoutes = routes.map(r => {
         if (r.id === routeToSave.id) return routeToSave;
         if (routeToSave.isDefault) return { ...r, isDefault: false };
         return r;
-      }));
+      });
+      setRoutes(updatedRoutes);
+      safeStorage.setItem('georoute_routes', JSON.stringify(updatedRoutes));
       saveCloudRoute(routeToSave);
       if (routeToSave.isDefault) {
-        setCloudDefaultRoute(routeToSave.id, routes);
+        setCloudDefaultRoute(routeToSave.id, updatedRoutes);
       }
       showToast(`Đã cập nhật và hiển thị ngay bản đồ tuyến "${routeToSave.name}"!`, 'success');
     } else {
-      setRoutes(prev => [
+      const updatedRoutes = [
         routeToSave,
-        ...(routeToSave.isDefault ? prev.map(r => ({ ...r, isDefault: false })) : prev)
-      ]);
+        ...(routeToSave.isDefault ? routes.map(r => ({ ...r, isDefault: false })) : routes)
+      ];
+      setRoutes(updatedRoutes);
+      safeStorage.setItem('georoute_routes', JSON.stringify(updatedRoutes));
       saveCloudRoute(routeToSave);
       if (routeToSave.isDefault) {
-        setCloudDefaultRoute(routeToSave.id, routes);
+        setCloudDefaultRoute(routeToSave.id, updatedRoutes);
       }
       showToast(`Đã tạo mới và hiển thị ngay bản đồ tuyến "${routeToSave.name}"!`, 'success');
     }

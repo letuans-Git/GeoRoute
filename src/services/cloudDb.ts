@@ -6,7 +6,8 @@ import {
   setDoc, 
   deleteDoc, 
   onSnapshot,
-  writeBatch
+  writeBatch,
+  deleteField
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { UserAccount, RouteItem, LocationPoint, UserRole, RolePermissionConfig, DEFAULT_ROLE_PERMISSIONS } from '../types';
@@ -52,13 +53,17 @@ export function serializeRouteForFirestore(route: RouteItem): any {
     copy.boundsJson = JSON.stringify(route.bounds);
     delete copy.bounds;
   }
-  if (route.mapOverlay) {
+  if (route.mapOverlay && route.mapOverlay.imageUrl) {
     const ov = { ...route.mapOverlay };
     if (ov.bounds) {
       copy.mapOverlayBoundsJson = JSON.stringify(ov.bounds);
       delete (ov as any).bounds;
     }
     copy.mapOverlay = ov;
+  } else {
+    // Khi xóa ảnh thực địa hoặc không có ảnh, báo hiệu Firestore xóa hẳn các trường này
+    copy.mapOverlay = deleteField();
+    copy.mapOverlayBoundsJson = deleteField();
   }
 
   return cleanFirestoreData(copy);
@@ -90,7 +95,7 @@ export function deserializeRouteFromFirestore(data: any): RouteItem {
     }
   }
 
-  if (data.mapOverlay) {
+  if (data.mapOverlay && data.mapOverlay.imageUrl) {
     res.mapOverlay = { ...data.mapOverlay };
     if (data.mapOverlayBoundsJson) {
       try {
@@ -99,7 +104,13 @@ export function deserializeRouteFromFirestore(data: any): RouteItem {
         console.error('Failed to parse mapOverlayBoundsJson:', e);
       }
     }
+  } else {
+    delete res.mapOverlay;
   }
+
+  delete res.polylineJson;
+  delete res.boundsJson;
+  delete res.mapOverlayBoundsJson;
 
   return res as RouteItem;
 }
